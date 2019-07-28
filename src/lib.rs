@@ -1,3 +1,5 @@
+#![feature(generic_associated_types)]
+
 mod candidate_queue;
 mod nearest_queue;
 
@@ -37,14 +39,14 @@ pub struct HNSW {
 /// A node in the zero layer
 #[derive(Clone, Debug)]
 struct ZeroNode {
-    /// The actual binary feature.
-    ///
-    /// TODO: This is bad because each feature has to be looked up individually with random access.
-    /// We might be able to store the features of neighbors within the neighbors array to speed up the search, but this
-    /// will come at the cost of increased memory consumption. With small binary features this would not be an issue.
-    feature: u128,
     /// The neighbors of this node.
     neighbors: [u32; M_MAX0],
+}
+
+impl ZeroNode {
+    fn neighbors<'a>(&'a self) -> impl Iterator<Item = u32> + 'a {
+        self.neighbors.iter().cloned().take_while(|&n| n != !0)
+    }
 }
 
 /// A node in any other layer other than the zero layer
@@ -56,6 +58,12 @@ struct Node {
     next_node: u32,
     /// The neighbors in the graph of this node.
     neighbors: [u32; M_MAX],
+}
+
+impl Node {
+    fn neighbors<'a>(&'a self) -> impl Iterator<Item = u32> + 'a {
+        self.neighbors.iter().cloned().take_while(|&n| n != !0)
+    }
 }
 
 /// Contains all the state used when searching the HNSW
@@ -100,19 +108,37 @@ impl HNSW {
     /// Greedily finds the approximate nearest neighbors to `q` in a given layer.
     fn search_layer(&self, q: u128, searcher: &mut Searcher, layer: &[Node]) {
         while let Some((node, _)) = searcher.candidates.pop() {
-            for neighbor in layer[node as usize]
-                .neighbors
-                .iter()
-                .cloned()
-                .take_while(|&n| n != !0)
-            {
+            for neighbor in layer[node as usize].neighbors() {
                 let neighbor_node = &layer[neighbor as usize];
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
                 // across all layers since zero nodes are consistent among all layers.
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
                 if searcher.seen.insert(neighbor_node.zero_node) {
                     // Compute the distance of this neighbor.
-                    let distance = (self.node_feature(&layer[neighbor as usize]) ^ q).count_ones();
+                    let distance =
+                        (q ^ self.features[neighbor_node.zero_node as usize]).count_ones();
+                    // Attempt to insert into nearest queue.
+                    if searcher.nearest.insert(neighbor, distance) {
+                        // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
+                        searcher.candidates.insert(neighbor, distance);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
+    fn search_zero_layer(&self, q: u128, searcher: &mut Searcher, layer: &[ZeroNode]) {
+        while let Some((node, _)) = searcher.candidates.pop() {
+            for neighbor in layer[node as usize].neighbors() {
+                let neighbor_node = &layer[neighbor as usize];
+                // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
+                // across all layers since zero nodes are consistent among all layers.
+                // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
+                if searcher.seen.insert(neighbor) {
+                    // Compute the distance of this neighbor.
+                    let distance =
+                        (q ^ self.features[neighbor as usize]).count_ones();
                     // Attempt to insert into nearest queue.
                     if searcher.nearest.insert(neighbor, distance) {
                         // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
@@ -140,17 +166,12 @@ impl HNSW {
         searcher.nearest.reset(M);
     }
 
-    /// Get a feature from a node.
-    fn node_feature(&self, node: &Node) -> u128 {
-        self.zero[node.zero_node as usize].feature
-    }
-
     /// Gets the entry point's feature.
     fn entry_feature(&self) -> u128 {
         if let Some(last_layer) = self.layers.last() {
-            self.node_feature(&last_layer[self.enter_index as usize])
+            self.features[last_layer[self.enter_index as usize].zero_node as usize]
         } else {
-            self.zero[self.enter_index as usize].feature
+            self.features[self.enter_index as usize]
         }
     }
 
