@@ -26,13 +26,6 @@ pub struct CandidateQueue<T> {
 }
 
 impl<T> CandidateQueue<T> {
-    /// Takes all the entries in the root node (level 0) and adds them to the queue.
-    ///
-    /// This is passed the (distance, tp, node).
-    pub fn new() -> Self {
-        Default::default()
-    }
-
     /// This allows the queue to be cleared so that we don't need to reallocate memory.
     pub(crate) fn clear(&mut self) {
         for v in self.distances.iter_mut() {
@@ -70,7 +63,7 @@ impl<T> CandidateQueue<T> {
     }
 
     /// Iterator over the items in the queue.
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item=&mut T> {
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.distances.iter_mut().flat_map(|v| v.iter_mut())
     }
 }

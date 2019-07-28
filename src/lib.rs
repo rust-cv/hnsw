@@ -1,5 +1,3 @@
-#![feature(generic_associated_types)]
-
 mod candidate_queue;
 mod nearest_queue;
 
@@ -67,7 +65,7 @@ impl Node {
 }
 
 /// Contains all the state used when searching the HNSW
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Searcher {
     candidates: CandidateQueue<u32>,
     nearest: NearestQueue<u32>,
@@ -76,33 +74,49 @@ pub struct Searcher {
 
 impl HNSW {
     /// Inserts a feature into the HNSW.
-    pub fn insert(&mut self, feature: u128) -> u32 {
+    pub fn insert(&mut self, _feature: u128) -> u32 {
         let uniform: f32 = Standard.sample(&mut self.prng);
         let level = (uniform * ml()) as usize;
         // If the level chosen is higher than all other levels, we want to set this to be the enter point.
         if level > self.levels() {
             unimplemented!();
         }
-        (self.features.len() - 1) as u32
+        unimplemented!()
     }
 
-    /// Does a k-NN search where `k` is the number of nearest neighbors.
-    pub fn nearest(&self, feature: u128, k: usize) -> NearestQueue<u128> {
-        let feature_heap = NearestQueue::new();
-        let mut node_queue: CandidateQueue<u32> = CandidateQueue::new();
+    /// Does a k-NN search where `q` is the query element and it attempts to put up to `M` nearest neighbors into `dest`.
+    ///
+    /// Returns a slice of the filled neighbors.
+    pub fn nearest<'a>(&self, q: u128, dest: &'a mut [u32]) -> &'a mut [u32] {
+        let mut searcher = Searcher::default();
 
         // If there is nothing in here, then just return nothing.
         if self.features.is_empty() {
-            return feature_heap;
+            return &mut [];
         }
 
-        // Start by adding the entry point to the node priority queue.
-        node_queue.insert(
-            self.enter_index,
-            (feature ^ self.entry_feature()).count_ones(),
+        // Start by adding the entry point.
+        searcher
+            .candidates
+            .insert(self.enter_index, (q ^ self.entry_feature()).count_ones());
+        searcher
+            .nearest
+            .insert(self.enter_index, (q ^ self.entry_feature()).count_ones());
+        searcher.seen.insert(
+            self.layers
+                .last()
+                .map(|layer| layer[self.enter_index as usize].zero_node)
+                .unwrap_or(self.enter_index),
         );
 
-        feature_heap
+        for (ix, layer) in self.layers.iter().enumerate().rev() {
+            self.search_layer(q, &mut searcher, layer);
+            self.lower_search(layer, &mut searcher, if ix == 0 { M_MAX0 } else { M });
+        }
+
+        self.search_zero_layer(q, &mut searcher);
+
+        searcher.nearest.fill_slice(dest)
     }
 
     /// Greedily finds the approximate nearest neighbors to `q` in a given layer.
@@ -128,17 +142,15 @@ impl HNSW {
     }
 
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
-    fn search_zero_layer(&self, q: u128, searcher: &mut Searcher, layer: &[ZeroNode]) {
+    fn search_zero_layer(&self, q: u128, searcher: &mut Searcher) {
         while let Some((node, _)) = searcher.candidates.pop() {
-            for neighbor in layer[node as usize].neighbors() {
-                let neighbor_node = &layer[neighbor as usize];
+            for neighbor in self.zero[node as usize].neighbors() {
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
                 // across all layers since zero nodes are consistent among all layers.
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
                 if searcher.seen.insert(neighbor) {
                     // Compute the distance of this neighbor.
-                    let distance =
-                        (q ^ self.features[neighbor as usize]).count_ones();
+                    let distance = (q ^ self.features[neighbor as usize]).count_ones();
                     // Attempt to insert into nearest queue.
                     if searcher.nearest.insert(neighbor, distance) {
                         // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
@@ -156,14 +168,14 @@ impl HNSW {
         // Clear the candidates so we can fill them with the best nodes in the last layer.
         searcher.candidates.clear();
         // Look through all the nearest neighbors from the last layer.
-        for (node, distance) in searcher.nearest.drain() {
+        for (node, distance) in searcher.nearest.iter_mut() {
+            // Update the node to the next layer.
+            *node = layer[*node as usize].next_node;
             // Insert the indices of those nearest neighbors into the candidates for the next layer.
-            searcher
-                .candidates
-                .insert(layer[node as usize].next_node, distance);
+            searcher.candidates.insert(*node, distance);
         }
-        // Reset the nearest neighbors.
-        searcher.nearest.reset(M);
+        // Set the capacity on the nearest to `m`.
+        searcher.nearest.set_capacity(m);
     }
 
     /// Gets the entry point's feature.

@@ -14,8 +14,14 @@ pub struct NearestQueue<T> {
 }
 
 impl<T> NearestQueue<T> {
-    pub fn new() -> Self {
-        Default::default()
+    pub(crate) fn set_capacity(&mut self, cap: usize) {
+        if cap < self.cap {
+            // Remove the difference between them.
+            for _ in cap..self.cap {
+                self.remove_worst();
+            }
+        }
+        self.cap = cap;
     }
 
     /// Reset the heap while maintaining the allocated memory.
@@ -99,11 +105,11 @@ impl<T> NearestQueue<T> {
     }
 
     /// Drain the entire queue in best-to-worse order.
-    pub fn drain<'a>(&'a mut self) -> impl Iterator<Item = (T, u32)> + 'a {
+    pub(crate) fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (&'a mut T, u32)> {
         self.distances
             .iter_mut()
             .enumerate()
-            .flat_map(|(distance, v)| v.drain(..).map(move |item| (item, distance as u32)))
+            .flat_map(|(distance, v)| v.iter_mut().map(move |item| (item, distance as u32)))
     }
 }
 
