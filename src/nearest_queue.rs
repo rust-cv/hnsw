@@ -1,162 +1,128 @@
-use packed_simd::{u128x4, u8x4, Cast};
+use std::fmt;
 
-pub struct FeatureHeap {
+/// This keeps the nearest `cap` items at all times.
+///
+/// It is efficiently implemented for nearest neighbor searches to have constant-time insertion, but
+/// it only works for distances in the range [0, 128]. This is specifically tailored for doing hamming space
+/// nearest neighbor searches.
+#[derive(Clone)]
+pub struct NearestQueue<T> {
     cap: usize,
     size: usize,
-    in_search: usize,
-    search_distance: u32,
-    search: u128,
     worst: u32,
-    features: [Vec<u128>; 129],
+    distances: [Vec<T>; 129],
 }
 
-impl FeatureHeap {
+impl<T> NearestQueue<T> {
     pub fn new() -> Self {
         Default::default()
     }
 
     /// Reset the heap while maintaining the allocated memory.
-    pub(crate) fn reset(&mut self, cap: usize, search: u128) {
+    pub(crate) fn reset(&mut self, cap: usize) {
         assert_ne!(cap, 0);
         self.cap = cap;
         self.size = 0;
-        self.in_search = 0;
-        self.search_distance = 0;
-        self.search = search;
         self.worst = 128;
-        for v in self.features.iter_mut() {
+        for v in self.distances.iter_mut() {
             v.clear();
         }
     }
 
-    /// Update the minimum distance we are searching at.
-    pub(crate) fn search_distance(&mut self, distance: u32) {
-        assert!(distance >= self.search_distance);
-        self.in_search += self.features[self.search_distance as usize + 1..=distance as usize]
-            .iter()
-            .map(Vec::len)
-            .sum::<usize>();
-        self.search_distance = distance;
-    }
-
     /// Add a feature to the search.
-    #[inline(always)]
-    pub(crate) fn add(&mut self, features: &[u128]) {
+    pub(crate) fn insert(&mut self, item: T, distance: u32) -> bool {
         if self.size != self.cap {
-            // If we aren't at the cap, every new feature gets inserted,
-            // so SIMD would just slow us down.
-            for &feature in features {
-                self.add_one(feature);
-            }
-        } else {
-            let (before, aligned, after) = unsafe { features.align_to::<u128x4>() };
-            let search = u128x4::splat(self.search);
-            let mut worst = u8x4::splat(self.worst as u8);
-            for &feature in before {
-                self.add_one_cap(feature);
-            }
-            for &feature in aligned {
-                let distance: u8x4 = (feature ^ search).count_ones().cast();
-                // If anything is less than the worst.
-                if (distance - worst).bitmask() != 0 {
-                    let mut local = [0; 4];
-                    feature.write_to_slice_unaligned(&mut local);
-                    // Do the normal horizontal version.
-                    for &feature in &local {
-                        self.add_one_cap(feature);
-                        // Update the worst vector (since it may have changed).
-                        worst = u8x4::splat(self.worst as u8);
-                    }
-                }
-            }
-            for &feature in after {
-                self.add_one_cap(feature);
-            }
-        }
-    }
-
-    /// Add a feature to the search.
-    #[inline(always)]
-    pub(crate) fn add_one(&mut self, feature: u128) {
-        let distance = (feature ^ self.search).count_ones();
-        // We stop searching once we have enough features under the search distance,
-        // so if this is true it will always get added to the FeatureHeap.
-        if distance <= self.search_distance {
-            self.in_search += 1;
-        }
-        if self.size != self.cap {
-            self.features[distance as usize].push(feature);
+            self.distances[distance as usize].push(item);
             self.size += 1;
             // Set the worst feature appropriately.
             if self.size == self.cap {
                 self.update_worst();
             }
+            true
         } else if distance < self.worst {
-            self.features[distance as usize].push(feature);
+            self.distances[distance as usize].push(item);
             self.remove_worst();
+            true
+        } else {
+            false
         }
+    }
+
+    /// Gets the worst distance in the queue currently.
+    ///
+    /// This is initialized to 128 (which is the worst possible distance) until `cap` elements have been inserted.
+    pub(crate) fn worst(&self) -> u32 {
+        self.worst
     }
 
     /// Add a feature to the search with the precondition we are already at the cap.
-    #[inline(always)]
-    fn add_one_cap(&mut self, feature: u128) {
-        let distance = (feature ^ self.search).count_ones();
+    fn add_one_cap(&mut self, item: T, distance: u32) {
         // We stop searching once we have enough features under the search distance,
         // so if this is true it will always get added to the FeatureHeap.
         if distance < self.worst {
-            if distance <= self.search_distance {
-                self.in_search += 1;
-            }
-            self.features[distance as usize].push(feature);
+            self.distances[distance as usize].push(item);
             self.remove_worst();
         }
     }
 
-    #[inline(always)]
+    /// Updates the worst when it has been set.
     fn update_worst(&mut self) {
-        self.worst -= self.features[0..=self.worst as usize]
+        self.worst -= self.distances[0..=self.worst as usize]
             .iter()
             .rev()
             .position(|v| !v.is_empty())
             .unwrap() as u32;
     }
 
-    #[inline(always)]
+    /// Remove the worst item and update the worst distance.
     fn remove_worst(&mut self) {
-        self.features[self.worst as usize].pop();
+        self.distances[self.worst as usize].pop();
         self.update_worst();
     }
 
-    #[inline(always)]
-    pub(crate) fn done(&self) -> bool {
-        self.in_search >= self.cap
-    }
-
-    pub(crate) fn fill_slice<'a>(&self, s: &'a mut [u128]) -> &'a mut [u128] {
+    /// Fill a slice with the `top` elements and return the part of the slice written.
+    pub fn fill_slice<'a>(&self, s: &'a mut [T]) -> &'a mut [T]
+    where
+        T: Clone,
+    {
         let total_fill = std::cmp::min(s.len(), self.size);
-        for (ix, &f) in self
-            .features
+        for (ix, f) in self
+            .distances
             .iter()
             .flat_map(|v| v.iter())
             .take(total_fill)
             .enumerate()
         {
-            s[ix] = f;
+            s[ix] = f.clone();
         }
         &mut s[0..total_fill]
     }
+
+    /// Drain the entire queue in best-to-worse order.
+    pub fn drain<'a>(&'a mut self) -> impl Iterator<Item = (T, u32)> + 'a {
+        self.distances
+            .iter_mut()
+            .enumerate()
+            .flat_map(|(distance, v)| v.drain(..).map(move |item| (item, distance as u32)))
+    }
 }
 
-impl Default for FeatureHeap {
+impl<T> fmt::Debug for NearestQueue<T>
+where
+    T: fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        self.distances[..].fmt(formatter)
+    }
+}
+
+impl<T> Default for NearestQueue<T> {
     fn default() -> Self {
         Self {
             cap: 0,
             size: 0,
-            in_search: 0,
-            search_distance: 0,
-            search: 0,
             worst: 128,
-            features: [
+            distances: [
                 vec![],
                 vec![],
                 vec![],
