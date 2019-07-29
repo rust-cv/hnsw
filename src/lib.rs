@@ -3,6 +3,7 @@ mod nearest_queue;
 
 use candidate_queue::*;
 use nearest_queue::*;
+use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64;
 use std::collections::HashSet;
 
@@ -13,7 +14,7 @@ const NUM_PRESERVED_CANDIDATES: usize = 1;
 
 /// This provides a HNSW implementation for 128-bit hamming space.
 #[derive(Clone, Debug)]
-pub struct HNSW {
+pub struct HNSW<R = Pcg64> {
     /// Contains the zero layer.
     zero: Vec<ZeroNode>,
     /// Contains the features of the zero layer.
@@ -23,7 +24,7 @@ pub struct HNSW {
     /// Contains each non-zero layer.
     layers: Vec<Vec<Node>>,
     /// This needs to create resonably random outputs to determine the levels of insertions.
-    prng: Pcg64,
+    prng: R,
 }
 
 /// A node in the zero layer
@@ -72,7 +73,56 @@ impl Searcher {
     }
 }
 
-impl HNSW {
+impl<R> HNSW<R>
+where
+    R: RngCore + SeedableRng,
+{
+    /// Creates a new HNSW with a PRNG which is default seeded to produce deterministic behavior.
+    ///
+    /// Warning: If you want some more safety against timing-based DOS attacks when input can be controlled by an
+    /// attacker, you may consider seeding the RNG from entropy in addition to using a stream cipher. However, it
+    /// is likely that timing attacks can be easily performed on this data structure regardless of these parameters
+    /// since the insertion performs a search which is data-dependent, so there may be little benefit. If attackers
+    /// have no control over insertions into the HNSW, then you probably cant be hit with a DOS attack. However,
+    /// since an attacker might be able to gain information about data other than their query in the data structure,
+    /// be careful not to put sensitive data into this structure. For instance: If you put binary features extracted
+    /// from images in to this data structure and an attacker sends you some image to query with, they might put a
+    /// single feature in the whole image that you search for, and even though you may not send them any of the data
+    /// in the HNSW, they might be able to extrapolate what things are contained in your HNSW instance based on the
+    /// timing of the data structure's nearest neighbor search. The lesson here is that you should be weary of letting
+    /// potential attackers control inputs to your algorithms and assert the appropriate level of caution.
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl<R> HNSW<R>
+where
+    R: RngCore,
+{
+    /// Creates a HNSW with the passed `prng`.
+    ///
+    /// Warning: If you want some more safety against timing-based DOS attacks when input can be controlled by an
+    /// attacker, you may consider seeding the RNG from entropy in addition to using a stream cipher. However, it
+    /// is likely that timing attacks can be easily performed on this data structure regardless of these parameters
+    /// since the insertion performs a search which is data-dependent, so there may be little benefit. If attackers
+    /// have no control over insertions into the HNSW, then you probably cant be hit with a DOS attack. However,
+    /// since an attacker might be able to gain information about data other than their query in the data structure,
+    /// be careful not to put sensitive data into this structure. For instance: If you put binary features extracted
+    /// from images in to this data structure and an attacker sends you some image to query with, they might put a
+    /// single feature in the whole image that you search for, and even though you may not send them any of the data
+    /// in the HNSW, they might be able to extrapolate what things are contained in your HNSW instance based on the
+    /// timing of the data structure's nearest neighbor search. The lesson here is that you should be weary of letting
+    /// potential attackers control inputs to your algorithms and assert the appropriate level of caution.
+    pub fn new_prng(prng: R) -> Self {
+        Self {
+            zero: vec![],
+            features: vec![],
+            layers: vec![],
+            prng,
+        }
+    }
+
     /// Inserts a feature into the HNSW.
     pub fn insert(&mut self, q: u128, searcher: &mut Searcher) -> u32 {
         // Get the level of this feature.
@@ -331,6 +381,20 @@ impl HNSW {
             } else {
                 self.layers[layer - 1][target_ix as usize].neighbors[worst_ix] = node_ix;
             }
+        }
+    }
+}
+
+impl<R> Default for HNSW<R>
+where
+    R: SeedableRng,
+{
+    fn default() -> Self {
+        Self {
+            zero: vec![],
+            features: vec![],
+            layers: vec![],
+            prng: R::from_seed(R::Seed::default()),
         }
     }
 }
