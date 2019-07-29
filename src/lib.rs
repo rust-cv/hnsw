@@ -143,6 +143,7 @@ where
                 };
                 self.layers.push(vec![node]);
             }
+            return 0;
         }
 
         self.initialize_searcher(q, searcher);
