@@ -391,7 +391,8 @@ where
                 };
                 (ix, distance)
             })
-            .min_by_key(|&(_, distance)| distance)
+            // This was done instead of max_by_key because min_by_key takes the first equally bad element.
+            .min_by_key(|&(_, distance)| -(distance as i32))
             .unwrap();
 
         // If this is better than the worst, insert it in the worst's place.

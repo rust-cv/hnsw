@@ -24,9 +24,14 @@ fn insertion() {
 fn nearest_neighbor() {
     let (hnsw, mut searcher) = test_hnsw();
     let searcher = &mut searcher;
-    let mut neighbors = [!0; 3];
+    let mut neighbors = [!0; 8];
 
     hnsw.nearest(0b0001, searcher, &mut neighbors);
-    neighbors.sort_unstable();
-    assert_eq!(&neighbors, &[0, 4, 7]);
+    // Distance 1
+    neighbors[1..3].sort_unstable();
+    // Distance 2
+    neighbors[3..6].sort_unstable();
+    // Distance 3
+    neighbors[6..8].sort_unstable();
+    assert_eq!(&neighbors, &[0, 4, 7, 1, 2, 3, 5, 6]);
 }
