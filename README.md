@@ -38,6 +38,6 @@ The authors define some parameters:
 
 ## Credit
 
-This is in no way a direct copy or reimplementation of [the original implementation](https://github.com/nmslib/hnswlib/blob/master/hnswlib/hnswalg.h), but that implementation will be reffered to in the design of this implementation whenever necessary as it has an Apache license. Thanks to the original authors and their choice to use a permissive license =).
+This is in no way a direct copy or reimplementation of [the original implementation](https://github.com/nmslib/hnswlib/blob/master/hnswlib/hnswalg.h). This was made purely based on [the paper](https://arxiv.org/pdf/1603.09320.pdf) without reference to the original headers. The paper is very well written and easy to understand, with some minor exceptions, so I never needed to refer to the original headers as I thought I would when I began working on this. Thank you to the authors for your valuble contribution.
 
 

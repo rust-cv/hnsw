@@ -62,9 +62,20 @@ impl<T> CandidateQueue<T> {
             .map(|n| (n + self.lowest) as u32)
     }
 
-    /// Iterator over the items in the queue.
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.distances.iter_mut().flat_map(|v| v.iter_mut())
+    /// Iterate over the entire queue in best-to-worse order.
+    pub(crate) fn iter<'a>(&'a mut self) -> impl Iterator<Item = (&'a T, u32)> {
+        self.distances
+            .iter()
+            .enumerate()
+            .flat_map(|(distance, v)| v.iter().map(move |item| (item, distance as u32)))
+    }
+    
+    /// Iterate over the entire queue in best-to-worse order.
+    pub(crate) fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (&'a mut T, u32)> {
+        self.distances
+            .iter_mut()
+            .enumerate()
+            .flat_map(|(distance, v)| v.iter_mut().map(move |item| (item, distance as u32)))
     }
 }
 

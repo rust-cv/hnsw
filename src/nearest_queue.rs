@@ -14,6 +14,9 @@ pub struct NearestQueue<T> {
 }
 
 impl<T> NearestQueue<T> {
+    /// This sets the capacity of the queue to `cap`, meaning that adding items to the queue will eject the worst ones
+    /// if they are better once `cap` is reached. If the capacity is lowered, this removes the worst elements to
+    /// keep `size == cap`.
     pub(crate) fn set_capacity(&mut self, cap: usize) {
         if cap < self.cap {
             // Remove the difference between them.
@@ -22,6 +25,19 @@ impl<T> NearestQueue<T> {
             }
         }
         self.cap = cap;
+    }
+
+    /// This removes elements until it reaches `size`. If `size` is lower than the current
+    /// number of elements, this does nothing. If the size is lowered, this will unconditionally allow insertions
+    /// until `cap` is reached.
+    pub(crate) fn set_size(&mut self, size: usize) {
+        if size < self.size {
+            // Remove the difference between them.
+            for _ in size..self.size {
+                self.remove_worst();
+            }
+            self.size = size;
+        }
     }
 
     /// Reset the heap while maintaining the allocated memory.
@@ -104,7 +120,15 @@ impl<T> NearestQueue<T> {
         &mut s[0..total_fill]
     }
 
-    /// Drain the entire queue in best-to-worse order.
+    /// Iterate over the entire queue in best-to-worse order.
+    pub(crate) fn iter<'a>(&'a mut self) -> impl Iterator<Item = (&'a T, u32)> {
+        self.distances
+            .iter()
+            .enumerate()
+            .flat_map(|(distance, v)| v.iter().map(move |item| (item, distance as u32)))
+    }
+    
+    /// Iterate over the entire queue in best-to-worse order.
     pub(crate) fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (&'a mut T, u32)> {
         self.distances
             .iter_mut()
