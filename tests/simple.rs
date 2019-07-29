@@ -1,3 +1,5 @@
+//! Useful tests for debugging since they are hand-written and easy to see the debugging output.
+
 use hnsw::*;
 
 fn test_hnsw() -> (HNSW, Searcher) {
