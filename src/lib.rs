@@ -68,15 +68,12 @@ pub struct Searcher {
 impl Searcher {
     fn clear(&mut self) {
         self.candidates.clear();
-        self.nearest.reset(0);
+        self.nearest.reset(M);
         self.seen.clear();
     }
 }
 
-impl<R> HNSW<R>
-where
-    R: RngCore + SeedableRng,
-{
+impl HNSW<Pcg64> {
     /// Creates a new HNSW with a PRNG which is default seeded to produce deterministic behavior.
     ///
     /// Warning: If you want some more safety against timing-based DOS attacks when input can be controlled by an
@@ -127,6 +124,26 @@ where
     pub fn insert(&mut self, q: u128, searcher: &mut Searcher) -> u32 {
         // Get the level of this feature.
         let level = self.random_level();
+
+        // If this is empty, none of this will work, so just add it manually.
+        if self.is_empty() {
+            // Add the zero node unconditionally.
+            self.zero.push(ZeroNode {
+                neighbors: [!0; M_MAX0],
+            });
+            self.features.push(q);
+
+            // Add all the layers its in.
+            while self.layers.len() < level {
+                // It's always index 0 with no neighbors since its the first feature.
+                let node = Node {
+                    zero_node: 0,
+                    next_node: 0,
+                    neighbors: [!0; M],
+                };
+                self.layers.push(vec![node]);
+            }
+        }
 
         self.initialize_searcher(q, searcher);
 
@@ -270,6 +287,9 @@ where
     fn initialize_searcher(&self, q: u128, searcher: &mut Searcher) {
         // Clear the searcher.
         searcher.clear();
+        searcher
+            .nearest
+            .set_capacity(if self.layers.is_empty() { M_MAX0 } else { M });
         // Add the entry point.
         searcher
             .candidates
