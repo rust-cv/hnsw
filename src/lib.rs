@@ -7,10 +7,12 @@ use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64;
 use std::collections::HashSet;
 
-const M: usize = 12;
+const M: usize = 16;
 const M_MAX: usize = M;
 const M_MAX0: usize = M * 2;
 const NUM_PRESERVED_CANDIDATES: usize = 1;
+const NUM_PRESERVED_CANDIDATES_CONSTRUCTION: usize = 1;
+const EF_CONSTURCTION: usize = 100;
 
 /// This provides a HNSW implementation for 128-bit hamming space.
 #[derive(Clone, Debug)]
@@ -146,7 +148,7 @@ where
             return 0;
         }
 
-        self.initialize_searcher(q, searcher);
+        self.initialize_searcher(q, searcher, EF_CONSTURCTION);
 
         // Start from the current top layer and connect it to its nearest neighbors.
         for ix in (0..self.layers.len()).rev() {
@@ -155,7 +157,12 @@ where
             // Then use the results of that search on this layer to connect the nodes.
             self.create_node(q, &searcher.nearest, ix + 1);
             // Then lower the search only after we create the node.
-            self.lower_search(&self.layers[ix], searcher, if ix == 0 { M_MAX0 } else { M });
+            self.lower_search(
+                &self.layers[ix],
+                searcher,
+                EF_CONSTURCTION,
+                NUM_PRESERVED_CANDIDATES_CONSTRUCTION,
+            );
         }
 
         // Also search and connect the node to the zero layer.
@@ -195,11 +202,16 @@ where
             return &mut [];
         }
 
-        self.initialize_searcher(q, searcher);
+        self.initialize_searcher(q, searcher, if self.layers.is_empty() { M_MAX0 } else { M });
 
         for (ix, layer) in self.layers.iter().enumerate().rev() {
             self.search_layer(q, searcher, layer);
-            self.lower_search(layer, searcher, if ix == 0 { M_MAX0 } else { M });
+            self.lower_search(
+                layer,
+                searcher,
+                if ix == 0 { M_MAX0 } else { M },
+                NUM_PRESERVED_CANDIDATES,
+            );
         }
 
         self.search_zero_layer(q, searcher);
@@ -265,13 +277,13 @@ where
     /// Ready a search for the next level down.
     ///
     /// `m` is the maximum number of nearest neighbors to consider during the search.
-    fn lower_search(&self, layer: &[Node], searcher: &mut Searcher, m: usize) {
+    fn lower_search(&self, layer: &[Node], searcher: &mut Searcher, m: usize, preserve: usize) {
         // Clear the candidates so we can fill them with the best nodes in the last layer.
         searcher.candidates.clear();
         // Only preserve some of the candidates. The original paper's algorithm uses `1` every time,
         // but for benchmarking purposes we will use a constant. See Algorithm 5 line 5 of the paper.
         // The paper makes no further comment on why `1` was chosen.
-        searcher.nearest.set_size(NUM_PRESERVED_CANDIDATES);
+        searcher.nearest.set_size(preserve);
         // Look through all the nearest neighbors from the last layer.
         for (node, distance) in searcher.nearest.iter_mut() {
             // Update the node to the next layer.
@@ -285,12 +297,10 @@ where
 
     /// Resets a searcher, but does not set the `cap` on the nearest neighbors.
     /// Must be passed the query element `q`.
-    fn initialize_searcher(&self, q: u128, searcher: &mut Searcher) {
+    fn initialize_searcher(&self, q: u128, searcher: &mut Searcher, cap: usize) {
         // Clear the searcher.
         searcher.clear();
-        searcher
-            .nearest
-            .set_capacity(if self.layers.is_empty() { M_MAX0 } else { M });
+        searcher.nearest.set_capacity(cap);
         // Add the entry point.
         searcher
             .candidates
