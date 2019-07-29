@@ -11,4 +11,5 @@ rand_distr = "0.2.1"
 
 [dev-dependencies]
 rand = "0.7.0"
+criterion = "0.2.11"
 
