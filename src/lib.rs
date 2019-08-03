@@ -5,9 +5,10 @@ use candidate_queue::*;
 use nearest_queue::*;
 use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64;
+use rustc_hash::FxHasher;
 use std::collections::HashSet;
 
-const M: usize = 16;
+const M: usize = 24;
 const M_MAX: usize = M;
 const M_MAX0: usize = M * 2;
 const NUM_PRESERVED_CANDIDATES: usize = 1;
@@ -15,7 +16,7 @@ const NUM_PRESERVED_CANDIDATES_CONSTRUCTION: usize = 1;
 const EF_CONSTURCTION: usize = 100;
 
 /// This provides a HNSW implementation for 128-bit hamming space.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct HNSW<R = Pcg64> {
     /// Contains the zero layer.
     zero: Vec<ZeroNode>,
@@ -30,7 +31,7 @@ pub struct HNSW<R = Pcg64> {
 }
 
 /// A node in the zero layer
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct ZeroNode {
     /// The neighbors of this node.
     neighbors: [u32; M_MAX0],
@@ -64,10 +65,14 @@ impl Node {
 pub struct Searcher {
     candidates: CandidateQueue<u32>,
     nearest: NearestQueue<u32>,
-    seen: HashSet<u32>,
+    seen: HashSet<u32, std::hash::BuildHasherDefault<FxHasher>>,
 }
 
 impl Searcher {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
     fn clear(&mut self) {
         self.candidates.clear();
         self.nearest.reset(M);
