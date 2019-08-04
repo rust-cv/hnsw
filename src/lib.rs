@@ -1,14 +1,10 @@
-mod candidate_queue;
-mod nearest_queue;
-
-use candidate_queue::*;
-use nearest_queue::*;
+use hamming_heap::{FixedHammingHeap128, HammingHeap128};
 use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64;
 use rustc_hash::FxHasher;
 use std::collections::HashSet;
 
-const M: usize = 24;
+const M: usize = 12;
 const M_MAX: usize = M;
 const M_MAX0: usize = M * 2;
 const NUM_PRESERVED_CANDIDATES: usize = 1;
@@ -63,8 +59,8 @@ impl Node {
 /// Contains all the state used when searching the HNSW
 #[derive(Clone, Debug, Default)]
 pub struct Searcher {
-    candidates: CandidateQueue<u32>,
-    nearest: NearestQueue<u32>,
+    candidates: HammingHeap128<u32>,
+    nearest: FixedHammingHeap128<u32>,
     seen: HashSet<u32, std::hash::BuildHasherDefault<FxHasher>>,
 }
 
@@ -75,7 +71,7 @@ impl Searcher {
 
     fn clear(&mut self) {
         self.candidates.clear();
-        self.nearest.reset(M);
+        self.nearest.clear();
         self.seen.clear();
     }
 }
@@ -239,7 +235,7 @@ where
     /// Greedily finds the approximate nearest neighbors to `q` in a non-zero layer.
     /// This corresponds to Algorithm 2 in the paper.
     fn search_layer(&self, q: u128, searcher: &mut Searcher, layer: &[Node]) {
-        while let Some((node, _)) = searcher.candidates.pop() {
+        while let Some((_, node)) = searcher.candidates.pop() {
             for neighbor in layer[node as usize].neighbors() {
                 let neighbor_node = &layer[neighbor as usize];
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
@@ -250,9 +246,9 @@ where
                     let distance =
                         (q ^ self.features[neighbor_node.zero_node as usize]).count_ones();
                     // Attempt to insert into nearest queue.
-                    if searcher.nearest.insert(neighbor, distance) {
+                    if searcher.nearest.push(distance, neighbor) {
                         // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
-                        searcher.candidates.insert(neighbor, distance);
+                        searcher.candidates.push(distance, neighbor);
                     }
                 }
             }
@@ -261,7 +257,7 @@ where
 
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
     fn search_zero_layer(&self, q: u128, searcher: &mut Searcher) {
-        while let Some((node, _)) = searcher.candidates.pop() {
+        while let Some((_, node)) = searcher.candidates.pop() {
             for neighbor in self.zero[node as usize].neighbors() {
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
                 // across all layers since zero nodes are consistent among all layers.
@@ -270,9 +266,9 @@ where
                     // Compute the distance of this neighbor.
                     let distance = (q ^ self.features[neighbor as usize]).count_ones();
                     // Attempt to insert into nearest queue.
-                    if searcher.nearest.insert(neighbor, distance) {
+                    if searcher.nearest.push(distance, neighbor) {
                         // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
-                        searcher.candidates.insert(neighbor, distance);
+                        searcher.candidates.push(distance, neighbor);
                     }
                 }
             }
@@ -290,11 +286,11 @@ where
         // The paper makes no further comment on why `1` was chosen.
         searcher.nearest.set_size(preserve);
         // Look through all the nearest neighbors from the last layer.
-        for (node, distance) in searcher.nearest.iter_mut() {
+        for (distance, node) in searcher.nearest.iter_mut() {
             // Update the node to the next layer.
             *node = layer[*node as usize].next_node;
             // Insert the indices of those nearest neighbors into the candidates for the next layer.
-            searcher.candidates.insert(*node, distance);
+            searcher.candidates.push(distance, *node);
         }
         // Set the capacity on the nearest to `m`.
         searcher.nearest.set_capacity(m);
@@ -307,12 +303,9 @@ where
         searcher.clear();
         searcher.nearest.set_capacity(cap);
         // Add the entry point.
-        searcher
-            .candidates
-            .insert(0, (q ^ self.entry_feature()).count_ones());
-        searcher
-            .nearest
-            .insert(0, (q ^ self.entry_feature()).count_ones());
+        let entry_distance = (q ^ self.entry_feature()).count_ones();
+        searcher.candidates.push(entry_distance, 0);
+        searcher.nearest.push(entry_distance, 0);
         searcher.seen.insert(
             self.layers
                 .last()
@@ -339,7 +332,7 @@ where
 
     /// Creates a new node at a layer given its nearest neighbors in that layer.
     /// This contains Algorithm 3 from the paper, but also includes some additional logic.
-    fn create_node(&mut self, q: u128, nearest: &NearestQueue<u32>, layer: usize) {
+    fn create_node(&mut self, q: u128, nearest: &FixedHammingHeap128<u32>, layer: usize) {
         if layer == 0 {
             let new_index = self.zero.len();
             let mut neighbors = [!0; M_MAX0];

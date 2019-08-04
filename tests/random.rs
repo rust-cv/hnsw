@@ -8,7 +8,7 @@ use rand_distr::{Bernoulli, Standard};
 use rand_pcg::Pcg64;
 
 // This can be adjusted lower if it is too slow.
-const SEARCH_SPACE_SIZE: usize = 1 << 14;
+const SEARCH_SPACE_SIZE: usize = 1 << 16;
 
 #[test]
 fn linear_1_nn() {
