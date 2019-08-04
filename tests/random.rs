@@ -7,6 +7,9 @@ use rand_core::SeedableRng;
 use rand_distr::{Bernoulli, Standard};
 use rand_pcg::Pcg64;
 
+// This can be adjusted lower if it is too slow.
+const SEARCH_SPACE_SIZE: usize = 1 << 14;
+
 #[test]
 fn linear_1_nn() {
     let mut searcher = Searcher::default();
@@ -16,7 +19,9 @@ fn linear_1_nn() {
 
     let prng = Pcg64::from_seed([5; 32]);
     let mut rngiter = prng.sample_iter(&Standard);
-    let space = (&mut rngiter).take(1 << 16).collect::<Vec<u128>>();
+    let space = (&mut rngiter)
+        .take(SEARCH_SPACE_SIZE)
+        .collect::<Vec<u128>>();
     let search = (&mut rngiter).take(100).collect::<Vec<u128>>();
 
     for &feature in &space {
@@ -63,7 +68,7 @@ fn linear_1_nn_inliers() {
     let prng = Pcg64::from_seed([5; 32]);
     let space = prng
         .sample_iter(&Standard)
-        .take(1 << 16)
+        .take(SEARCH_SPACE_SIZE)
         .collect::<Vec<u128>>();
     let mut prng_elem_chooser = Pcg64::from_seed([6; 32]);
     let mut prng_bit_chooser = Pcg64::from_seed([7; 32]);
@@ -108,5 +113,5 @@ fn linear_1_nn_inliers() {
     }
 
     eprintln!("pass: {}/100", pass);
-    assert!(pass >= 80);
+    assert!(pass >= 90);
 }
