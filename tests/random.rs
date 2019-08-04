@@ -38,7 +38,7 @@ fn linear_1_nn() {
             .min_by_key(|(_, &space_feature)| (feature ^ space_feature).count_ones())
             .unwrap();
         // Use HNSW to find the nearest neighbor.
-        hnsw.nearest(feature, searcher, &mut output);
+        hnsw.nearest(feature, 24, searcher, &mut output);
         // Get their respective found features.
         let linear = *nearest.1;
         let hnsw = space[output[0] as usize];
@@ -52,7 +52,7 @@ fn linear_1_nn() {
     }
 
     eprintln!("pass: {}/100", pass);
-    assert!(pass >= 5);
+    assert!(pass >= 10);
 }
 
 /// Does the same thing as linear_1_nn, but purposefully generates inliers in the search set.
@@ -99,7 +99,7 @@ fn linear_1_nn_inliers() {
             .min_by_key(|(_, &space_feature)| (feature ^ space_feature).count_ones())
             .unwrap();
         // Use HNSW to find the nearest neighbor.
-        hnsw.nearest(feature, searcher, &mut output);
+        hnsw.nearest(feature, 24, searcher, &mut output);
         // Get their respective found features.
         let linear = *nearest.1;
         let hnsw = space[output[0] as usize];

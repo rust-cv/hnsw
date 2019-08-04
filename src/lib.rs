@@ -151,7 +151,15 @@ where
             return 0;
         }
 
-        self.initialize_searcher(q, searcher, EF_CONSTURCTION);
+        self.initialize_searcher(
+            q,
+            searcher,
+            if level >= self.layers.len() {
+                EF_CONSTURCTION
+            } else {
+                1
+            },
+        );
 
         // Find the entry point on the level it was created by searching normally until its level.
         for ix in (level..self.layers.len()).rev() {
@@ -161,7 +169,7 @@ where
             self.lower_search(
                 &self.layers[ix],
                 searcher,
-                EF_CONSTURCTION,
+                if ix == level { EF_CONSTURCTION } else { 1 },
                 NUM_PRESERVED_CANDIDATES_CONSTRUCTION,
             );
         }
@@ -205,11 +213,14 @@ where
     }
 
     /// Does a k-NN search where `q` is the query element and it attempts to put up to `M` nearest neighbors into `dest`.
+    /// `ef` is the candidate pool size. `ef` can be increased to get better recall at the expense of speed.
+    /// If `ef` is less than `dest.len()` then `dest` will only be filled with `ef` elements.
     ///
     /// Returns a slice of the filled neighbors.
     pub fn nearest<'a>(
         &self,
         q: u128,
+        ef: usize,
         searcher: &mut Searcher,
         dest: &'a mut [u32],
     ) -> &'a mut [u32] {
@@ -218,22 +229,14 @@ where
             return &mut [];
         }
 
-        self.initialize_searcher(
-            q,
-            searcher,
-            if self.layers.is_empty() {
-                M0::USIZE
-            } else {
-                M::USIZE
-            },
-        );
+        self.initialize_searcher(q, searcher, if self.layers.is_empty() { ef } else { 1 });
 
         for (ix, layer) in self.layers.iter().enumerate().rev() {
             self.search_layer(q, searcher, layer);
             self.lower_search(
                 layer,
                 searcher,
-                if ix == 0 { M0::USIZE } else { M::USIZE },
+                if ix == 0 { ef } else { 1 },
                 NUM_PRESERVED_CANDIDATES,
             );
         }
@@ -307,7 +310,7 @@ where
         // Only preserve some of the candidates. The original paper's algorithm uses `1` every time,
         // but for benchmarking purposes we will use a constant. See Algorithm 5 line 5 of the paper.
         // The paper makes no further comment on why `1` was chosen.
-        searcher.nearest.set_size(preserve);
+        searcher.nearest.set_len(preserve);
         // Look through all the nearest neighbors from the last layer.
         for (distance, node) in searcher.nearest.iter_mut() {
             // Update the node to the next layer.

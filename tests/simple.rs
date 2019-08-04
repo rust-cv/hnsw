@@ -28,7 +28,7 @@ fn nearest_neighbor() {
     let searcher = &mut searcher;
     let mut neighbors = [!0; 8];
 
-    hnsw.nearest(0b0001, searcher, &mut neighbors);
+    hnsw.nearest(0b0001, 24, searcher, &mut neighbors);
     // Distance 1
     neighbors[1..3].sort_unstable();
     // Distance 2
