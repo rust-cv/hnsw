@@ -6,7 +6,6 @@ use rand::Rng;
 use rand_core::SeedableRng;
 use rand_distr::{Bernoulli, Standard};
 use rand_pcg::Pcg64;
-use generic_array::typenum;
 
 // This can be adjusted lower if it is too slow.
 const SEARCH_SPACE_SIZE: usize = 1 << 16;
@@ -15,7 +14,7 @@ const SEARCH_SPACE_SIZE: usize = 1 << 16;
 fn linear_1_nn() {
     let mut searcher = Searcher::default();
     let searcher = &mut searcher;
-    let mut hnsw = HNSW::<typenum::U12, typenum::U24>::new();
+    let mut hnsw: HNSW = HNSW::new();
     let mut output = [!0; 1];
 
     let prng = Pcg64::from_seed([5; 32]);
@@ -61,7 +60,7 @@ fn linear_1_nn() {
 fn linear_1_nn_inliers() {
     let mut searcher = Searcher::default();
     let searcher = &mut searcher;
-    let mut hnsw = HNSW::<typenum::U12, typenum::U24>::new();
+    let mut hnsw: HNSW = HNSW::new();
     let mut output = [!0; 1];
 
     const BIT_DIFF_PROBABILITY_OF_INLIER: f64 = 0.0859;

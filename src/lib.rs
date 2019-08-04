@@ -1,4 +1,4 @@
-use generic_array::{ArrayLength, GenericArray};
+use generic_array::{typenum, ArrayLength, GenericArray};
 use hamming_heap::{FixedHammingHeap128, HammingHeap128};
 use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64;
@@ -11,7 +11,8 @@ const EF_CONSTURCTION: usize = 100;
 
 /// This provides a HNSW implementation for 128-bit hamming space.
 #[derive(Clone)]
-pub struct HNSW<M: ArrayLength<u32>, M0: ArrayLength<u32>, R = Pcg64> {
+pub struct HNSW<M: ArrayLength<u32> = typenum::U12, M0: ArrayLength<u32> = typenum::U24, R = Pcg64>
+{
     /// Contains the zero layer.
     zero: Vec<ZeroNode<M0>>,
     /// Contains the features of the zero layer.
@@ -74,7 +75,10 @@ impl Searcher {
     }
 }
 
-impl<M: ArrayLength<u32>, M0: ArrayLength<u32>> HNSW<M, M0, Pcg64> {
+impl<M: ArrayLength<u32>, M0: ArrayLength<u32>, R> HNSW<M, M0, R>
+where
+    R: RngCore + SeedableRng,
+{
     /// Creates a new HNSW with a PRNG which is default seeded to produce deterministic behavior.
     ///
     /// Warning: If you want some more safety against timing-based DOS attacks when input can be controlled by an

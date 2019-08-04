@@ -2,7 +2,7 @@
 
 use hnsw::*;
 
-fn test_hnsw() -> (HNSW<typenum::U12, typenum::U24>, Searcher) {
+fn test_hnsw() -> (HNSW, Searcher) {
     let mut searcher = Searcher::default();
     let mut hnsw = HNSW::new();
 
