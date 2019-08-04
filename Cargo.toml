@@ -10,6 +10,8 @@ rand_pcg = "0.2.0"
 rand_distr = "0.2.1"
 rustc-hash = "1.0.1"
 hamming-heap = "0.1.0"
+generic-array = "0.13.2"
+typenum = "1.10.0"
 
 [dev-dependencies]
 rand = "0.7.0"

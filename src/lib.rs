@@ -1,39 +1,37 @@
+use generic_array::{ArrayLength, GenericArray};
 use hamming_heap::{FixedHammingHeap128, HammingHeap128};
 use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64;
 use rustc_hash::FxHasher;
 use std::collections::HashSet;
 
-const M: usize = 12;
-const M_MAX: usize = M;
-const M_MAX0: usize = M * 2;
 const NUM_PRESERVED_CANDIDATES: usize = 1;
 const NUM_PRESERVED_CANDIDATES_CONSTRUCTION: usize = 1;
 const EF_CONSTURCTION: usize = 100;
 
 /// This provides a HNSW implementation for 128-bit hamming space.
 #[derive(Clone)]
-pub struct HNSW<R = Pcg64> {
+pub struct HNSW<M: ArrayLength<u32>, M0: ArrayLength<u32>, R = Pcg64> {
     /// Contains the zero layer.
-    zero: Vec<ZeroNode>,
+    zero: Vec<ZeroNode<M0>>,
     /// Contains the features of the zero layer.
     /// These are stored separately to allow SIMD speedup in the future by
     /// grouping small worlds of features together.
     features: Vec<u128>,
     /// Contains each non-zero layer.
-    layers: Vec<Vec<Node>>,
+    layers: Vec<Vec<Node<M>>>,
     /// This needs to create resonably random outputs to determine the levels of insertions.
     prng: R,
 }
 
 /// A node in the zero layer
 #[derive(Clone)]
-struct ZeroNode {
+struct ZeroNode<N: ArrayLength<u32>> {
     /// The neighbors of this node.
-    neighbors: [u32; M_MAX0],
+    neighbors: GenericArray<u32, N>,
 }
 
-impl ZeroNode {
+impl<N: ArrayLength<u32>> ZeroNode<N> {
     fn neighbors<'a>(&'a self) -> impl Iterator<Item = u32> + 'a {
         self.neighbors.iter().cloned().take_while(|&n| n != !0)
     }
@@ -41,16 +39,16 @@ impl ZeroNode {
 
 /// A node in any other layer other than the zero layer
 #[derive(Clone, Debug)]
-struct Node {
+struct Node<N: ArrayLength<u32>> {
     /// The node in the zero layer this refers to.
     zero_node: u32,
     /// The node in the layer below this one that this node corresponds to.
     next_node: u32,
     /// The neighbors in the graph of this node.
-    neighbors: [u32; M_MAX],
+    neighbors: GenericArray<u32, N>,
 }
 
-impl Node {
+impl<N: ArrayLength<u32>> Node<N> {
     fn neighbors<'a>(&'a self) -> impl Iterator<Item = u32> + 'a {
         self.neighbors.iter().cloned().take_while(|&n| n != !0)
     }
@@ -76,7 +74,7 @@ impl Searcher {
     }
 }
 
-impl HNSW<Pcg64> {
+impl<M: ArrayLength<u32>, M0: ArrayLength<u32>> HNSW<M, M0, Pcg64> {
     /// Creates a new HNSW with a PRNG which is default seeded to produce deterministic behavior.
     ///
     /// Warning: If you want some more safety against timing-based DOS attacks when input can be controlled by an
@@ -96,7 +94,7 @@ impl HNSW<Pcg64> {
     }
 }
 
-impl<R> HNSW<R>
+impl<M: ArrayLength<u32>, M0: ArrayLength<u32>, R> HNSW<M, M0, R>
 where
     R: RngCore,
 {
@@ -132,7 +130,7 @@ where
         if self.is_empty() {
             // Add the zero node unconditionally.
             self.zero.push(ZeroNode {
-                neighbors: [!0; M_MAX0],
+                neighbors: std::iter::repeat(!0).collect(),
             });
             self.features.push(q);
 
@@ -142,7 +140,7 @@ where
                 let node = Node {
                     zero_node: 0,
                     next_node: 0,
-                    neighbors: [!0; M],
+                    neighbors: std::iter::repeat(!0).collect(),
                 };
                 self.layers.push(vec![node]);
             }
@@ -182,7 +180,7 @@ where
                     .last()
                     .map(|l| (l.len() - 1) as u32)
                     .unwrap_or(zero_node),
-                neighbors: [!0; M],
+                neighbors: std::iter::repeat(!0).collect(),
             };
             self.layers.push(vec![node]);
         }
@@ -203,14 +201,22 @@ where
             return &mut [];
         }
 
-        self.initialize_searcher(q, searcher, if self.layers.is_empty() { M_MAX0 } else { M });
+        self.initialize_searcher(
+            q,
+            searcher,
+            if self.layers.is_empty() {
+                M0::USIZE
+            } else {
+                M::USIZE
+            },
+        );
 
         for (ix, layer) in self.layers.iter().enumerate().rev() {
             self.search_layer(q, searcher, layer);
             self.lower_search(
                 layer,
                 searcher,
-                if ix == 0 { M_MAX0 } else { M },
+                if ix == 0 { M0::USIZE } else { M::USIZE },
                 NUM_PRESERVED_CANDIDATES,
             );
         }
@@ -234,7 +240,7 @@ where
 
     /// Greedily finds the approximate nearest neighbors to `q` in a non-zero layer.
     /// This corresponds to Algorithm 2 in the paper.
-    fn search_layer(&self, q: u128, searcher: &mut Searcher, layer: &[Node]) {
+    fn search_layer(&self, q: u128, searcher: &mut Searcher, layer: &[Node<M>]) {
         while let Some((_, node)) = searcher.candidates.pop() {
             for neighbor in layer[node as usize].neighbors() {
                 let neighbor_node = &layer[neighbor as usize];
@@ -278,7 +284,7 @@ where
     /// Ready a search for the next level down.
     ///
     /// `m` is the maximum number of nearest neighbors to consider during the search.
-    fn lower_search(&self, layer: &[Node], searcher: &mut Searcher, m: usize, preserve: usize) {
+    fn lower_search(&self, layer: &[Node<M>], searcher: &mut Searcher, m: usize, preserve: usize) {
         // Clear the candidates so we can fill them with the best nodes in the last layer.
         searcher.candidates.clear();
         // Only preserve some of the candidates. The original paper's algorithm uses `1` every time,
@@ -327,7 +333,7 @@ where
     fn random_level(&mut self) -> usize {
         use rand_distr::{Distribution, Standard};
         let uniform: f32 = Standard.sample(&mut self.prng);
-        (-uniform.ln() * (M as f32).ln().recip()) as usize
+        (-uniform.ln() * (M::to_usize() as f32).ln().recip()) as usize
     }
 
     /// Creates a new node at a layer given its nearest neighbors in that layer.
@@ -335,7 +341,7 @@ where
     fn create_node(&mut self, q: u128, nearest: &FixedHammingHeap128<u32>, layer: usize) {
         if layer == 0 {
             let new_index = self.zero.len();
-            let mut neighbors = [!0; M_MAX0];
+            let mut neighbors: GenericArray<u32, M0> = std::iter::repeat(!0).collect();
             nearest.fill_slice(&mut neighbors);
             let node = ZeroNode { neighbors };
             for neighbor in node.neighbors() {
@@ -344,7 +350,7 @@ where
             self.zero.push(node);
         } else {
             let new_index = self.layers[layer - 1].len();
-            let mut neighbors = [!0; M_MAX];
+            let mut neighbors: GenericArray<u32, M> = std::iter::repeat(!0).collect();
             nearest.fill_slice(&mut neighbors);
             let node = Node {
                 zero_node: self.zero.len() as u32,
@@ -415,7 +421,7 @@ where
     }
 }
 
-impl<R> Default for HNSW<R>
+impl<M: ArrayLength<u32>, M0: ArrayLength<u32>, R> Default for HNSW<M, M0, R>
 where
     R: SeedableRng,
 {
