@@ -153,8 +153,21 @@ where
 
         self.initialize_searcher(q, searcher, EF_CONSTURCTION);
 
-        // Start from the current top layer and connect it to its nearest neighbors.
-        for ix in (0..self.layers.len()).rev() {
+        // Find the entry point on the level it was created by searching normally until its level.
+        for ix in (level..self.layers.len()).rev() {
+            // Perform an ANN search on this layer like normal.
+            self.search_layer(q, searcher, &self.layers[ix]);
+            // Then lower the search only after we create the node.
+            self.lower_search(
+                &self.layers[ix],
+                searcher,
+                EF_CONSTURCTION,
+                NUM_PRESERVED_CANDIDATES_CONSTRUCTION,
+            );
+        }
+
+        // Then start from its level and connect it to its nearest neighbors.
+        for ix in (0..std::cmp::min(level, self.layers.len())).rev() {
             // Perform an ANN search on this layer like normal.
             self.search_layer(q, searcher, &self.layers[ix]);
             // Then use the results of that search on this layer to connect the nodes.
