@@ -3,6 +3,12 @@ name = "hnsw"
 version = "0.1.0"
 authors = ["Geordon Worley <vadixidav@gmail.com>"]
 edition = "2018"
+description = "Fast approximate nearest neighbors in hamming space"
+keywords = ["hamming", "distance", "nearest", "neighbor", "search"]
+categories = ["algorithms", "data-structures", "science::robotics"]
+repository = "https://github.com/rust-photogrammetry/hamming-heap"
+documentation = "https://docs.rs/hamming-heap/"
+readme = "README.md"
 
 [dependencies]
 rand_core = "0.5.0"
@@ -16,6 +22,9 @@ typenum = "1.10.0"
 [dev-dependencies]
 rand = "0.7.0"
 criterion = "0.2.11"
+gnuplot = "0.0.31"
+structopt = "0.2.18"
+easybench = "0.1.4"
 
 [profile.release]
 codegen-units = 1
