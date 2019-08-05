@@ -2,7 +2,7 @@
 
 Hierarchical Navigable Small World Graph for fast ANN search
 
-A benchmark of HNSW vs linear search with `ef` parameter of `24` and all others set to default (see full results [here](http://vadixidav.github.io/hnsw/2c3ac4b7af410e1c2ef0564c6561037185a0ceeb/neighbors/report/index.html)):
+A benchmark of HNSW with 128-bit binary features vs linear search with `ef` parameter of `24` and all others set to default (see full results [here](http://vadixidav.github.io/hnsw/2c3ac4b7af410e1c2ef0564c6561037185a0ceeb/neighbors/report/index.html)):
 
 ![Benchmark](http://vadixidav.github.io/hnsw/2c3ac4b7af410e1c2ef0564c6561037185a0ceeb/neighbors/report/lines.svg)
 
