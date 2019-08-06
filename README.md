@@ -6,7 +6,7 @@ A benchmark of HNSW with 128-bit binary features vs linear search with `ef` para
 
 ![Benchmark](http://vadixidav.github.io/hnsw/2c3ac4b7af410e1c2ef0564c6561037185a0ceeb/neighbors/report/lines.svg)
 
-An initial good point of comparison is [this graph](http://ann-benchmarks.com/sift-256-hamming_10_hamming.html).
+An initial good point of comparison is [this graph](http://ann-benchmarks.com/sift-256-hamming_10_hamming.html) which has a total search space of 10,000 items.
 
 You can also generate recall graphs (native cpu instructions recommended). Use the following to see how:
 
