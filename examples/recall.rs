@@ -8,15 +8,6 @@ use rand_pcg::Pcg64;
 use std::cell::RefCell;
 use structopt::StructOpt;
 
-/// This is the probability each bit of an inlier will be different.
-/// This comes from "Online Nearest Neighbor Search in Hamming Space"
-/// in figure 2a, where 1-NN has an average search radius of 11 for
-/// 128-bit features. I make the assumption here that the inliers
-/// exist on a binomial distribution over 128 choices centered at
-/// 11, which is consistent with the inlier statistics found in the paper
-/// "ORB: an efficient alternative to SIFT or SURF".
-const BIT_DIFF_PROBABILITY_OF_INLIER: f64 = 0.0859;
-
 #[derive(Debug, StructOpt)]
 #[structopt(name = "recall", about = "Generates recall graphs for HNSW")]
 struct Opt {
@@ -33,15 +24,29 @@ struct Opt {
 	/// The higher this is, the better the quality of the output data and statistics.
 	#[structopt(short = "i", long = "inliers", default_value = "1000")]
 	inliers: usize,
+	/// The probability of bit flip in generated inliers (0.5 is totally random/no correlation).
+	///
+	/// Examples:
+	/// Binarized SIFT (128-bit): 0.0859
+	///
+	#[structopt(short = "p", long = "mutate_probability", default_value = "0.5")]
+	mutate_probability: f64,
 	/// The beginning ef value.
 	#[structopt(short = "b", long = "beginning_ef", default_value = "1")]
 	beginning_ef: usize,
 	/// The ending ef value.
 	#[structopt(short = "e", long = "ending_ef", default_value = "32")]
 	ending_ef: usize,
+	/// The number of nearest neighbors.
+	#[structopt(short = "k", long = "neighbors", default_value = "1")]
+	k: usize,
 }
 
 fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
+	assert!(
+		opt.k <= opt.size,
+		"You must choose a dataset size larger or equal to the test search size"
+	);
 	let rng = Pcg64::from_seed([5; 32]);
 
 	eprintln!("Generating {} random bitstrings...", opt.size);
@@ -55,9 +60,9 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
 
 	eprintln!(
 		"Generating {} random inliers with probability of bit mutation of {}...",
-		opt.inliers, BIT_DIFF_PROBABILITY_OF_INLIER
+		opt.inliers, opt.mutate_probability
 	);
-	let bernoulli = Bernoulli::new(BIT_DIFF_PROBABILITY_OF_INLIER).unwrap();
+	let bernoulli = Bernoulli::new(opt.mutate_probability).unwrap();
 	let query_strings = search_space
 		.choose_multiple(&mut rng, opt.inliers)
 		.map(|&feature| {
@@ -75,16 +80,21 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
 		"Computing the correct nearest neighbor distance for all {} inliers...",
 		opt.inliers
 	);
-	let correct_distances: Vec<u32> = query_strings
+	let correct_worst_distances: Vec<u32> = query_strings
 		.iter()
 		.cloned()
 		.map(|feature| {
-			search_space
+			let mut heap = hamming_heap::FixedHammingHeap128::default();
+			heap.set_capacity(opt.k);
+			for distance in search_space
 				.iter()
 				.cloned()
 				.map(|n| (feature ^ n).count_ones())
-				.min()
-				.unwrap()
+			{
+				heap.push(distance, ());
+			}
+			// Get the worst distance
+			heap.iter().last().unwrap().0
 		})
 		.collect();
 	eprintln!("Done.");
@@ -103,17 +113,20 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
 	let (recalls, times): (Vec<f64>, Vec<f64>) = efs
 		.map(|ef| {
 			let correct = RefCell::new(0usize);
-			let stats = easybench::bench(|| {
+			let dest = vec![!0; opt.k];
+			let stats = easybench::bench_env(dest, |mut dest| {
 				let mut refmut = state.borrow_mut();
 				let (searcher, query) = &mut *refmut;
-
-				let mut dest = [0; 1];
 				let (ix, query_feature) = query.next().unwrap();
-				if (search_space[hnsw.nearest(query_feature, ef, searcher, &mut dest)[0] as usize]
-					^ query_feature)
-					.count_ones() == correct_distances[ix]
-				{
-					*correct.borrow_mut() += 1;
+				let correct_worst_distance = correct_worst_distances[ix];
+				// Go through all the features.
+				for &mut feature_ix in hnsw.nearest(query_feature, ef, searcher, &mut dest) {
+					// Any feature that is less than or equal to the worst real nearest neighbor distance is correct.
+					if (search_space[feature_ix as usize] ^ query_feature).count_ones()
+						<= correct_worst_distance
+					{
+						*correct.borrow_mut() += 1;
+					}
 				}
 			});
 			(stats, correct.into_inner())
@@ -122,7 +135,8 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
 			(vec![], vec![]),
 			|(mut recalls, mut times), (stats, correct)| {
 				times.push((stats.ns_per_iter * 0.1f64.powi(9)).recip());
-				recalls.push(correct as f64 / stats.iterations as f64);
+				// The maximum number of correct nearest neighbors is
+				recalls.push(correct as f64 / (stats.iterations * opt.k) as f64);
 				(recalls, times)
 			},
 		);
