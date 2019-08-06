@@ -18,7 +18,7 @@ use std::rc::Rc;
 const BIT_DIFF_PROBABILITY_OF_INLIER: f64 = 0.0859;
 
 fn bench_neighbors(c: &mut Criterion) {
-    let space_mags = 0..=17;
+    let space_mags = 0..=22;
     let all_sizes = (space_mags).map(|n| 2usize.pow(n));
     let rng = Pcg64::from_seed([5; 32]);
     // Get the bigest input size and then generate all inputs from that.
@@ -87,7 +87,8 @@ fn bench_neighbors(c: &mut Criterion) {
                         .min_by_key(|n| (feature ^ n).count_ones())
                 });
             }
-        }),
+        })
+        .plot_config(PlotConfiguration::default().summary_scale(AxisScale::Logarithmic)),
     );
 }
 
