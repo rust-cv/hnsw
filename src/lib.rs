@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 const NUM_PRESERVED_CANDIDATES: usize = 1;
 const NUM_PRESERVED_CANDIDATES_CONSTRUCTION: usize = 1;
-const EF_CONSTURCTION: usize = 100;
+const EF_CONSTURCTION: usize = 400;
 
 /// This provides a HNSW implementation for 128-bit hamming space.
 #[derive(Clone)]

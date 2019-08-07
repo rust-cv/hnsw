@@ -1,3 +1,4 @@
+use byteorder::ByteOrder;
 use generic_array::{typenum, ArrayLength};
 use gnuplot::*;
 use hnsw::*;
@@ -6,6 +7,8 @@ use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
 use std::cell::RefCell;
+use std::io::Read;
+use std::path::PathBuf;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -40,6 +43,16 @@ struct Opt {
 	/// The number of nearest neighbors.
 	#[structopt(short = "k", long = "neighbors", default_value = "1")]
 	k: usize,
+	/// Use the following file to load the search space.
+	#[structopt(short = "f", long = "file")]
+	file: Option<PathBuf>,
+	/// The descriptor stride length in bytes.
+	///
+	/// AKAZE: 61
+	/// ORB: 32
+	///
+	#[structopt(short = "d", long = "descriptor_stride", default_value = "61")]
+	descriptor_stride: usize,
 }
 
 fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
@@ -49,32 +62,66 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
 	);
 	let rng = Pcg64::from_seed([5; 32]);
 
-	eprintln!("Generating {} random bitstrings...", opt.size);
-	let search_space = rng
-		.sample_iter(&Standard)
-		.take(opt.size)
-		.collect::<Vec<u128>>();
-	eprintln!("Done.");
+	let (search_space, query_strings): (Vec<u128>, Vec<u128>) = if let Some(filepath) = &opt.file {
+		eprintln!(
+			"Reading {} search space descriptors of size {} bytes from file \"{}\"...",
+			opt.size,
+			opt.descriptor_stride,
+			filepath.display()
+		);
+		let mut file = std::fs::File::open(filepath).expect("unable to open file");
+		let mut v = vec![0u8; opt.size * opt.descriptor_stride];
+		file.read_exact(&mut v).expect(
+			"unable to read enough search descriptors from the file (try decreasing -s/-i)",
+		);
+		let search_space = v
+			.chunks_exact(opt.descriptor_stride)
+			.map(byteorder::NativeEndian::read_u128)
+			.collect();
+		eprintln!("Done.");
 
-	let mut rng = Pcg64::from_seed([6; 32]);
+		eprintln!(
+			"Reading {} inlier descriptors of size {} bytes from file \"{}\"...",
+			opt.inliers,
+			opt.descriptor_stride,
+			filepath.display()
+		);
+		let mut v = vec![0u8; opt.inliers * opt.descriptor_stride];
+		file.read_exact(&mut v).expect(
+			"unable to read enough inlier descriptors from the file (try decreasing -i/-s)",
+		);
+		let query_strings = v
+			.chunks_exact(opt.descriptor_stride)
+			.map(byteorder::NativeEndian::read_u128)
+			.collect();
+		eprintln!("Done.");
 
-	eprintln!(
-		"Generating {} random inliers with probability of bit mutation of {}...",
-		opt.inliers, opt.mutate_probability
-	);
-	let bernoulli = Bernoulli::new(opt.mutate_probability).unwrap();
-	let query_strings = search_space
-		.choose_multiple(&mut rng, opt.inliers)
-		.map(|&feature| {
-			let mut feature = feature;
-			for bit in 0..128 {
-				let choice: bool = rng.sample(&bernoulli);
-				feature ^= (choice as u128) << bit;
-			}
-			feature
-		})
-		.collect::<Vec<u128>>();
-	eprintln!("Done.");
+		(search_space, query_strings)
+	} else {
+		eprintln!("Generating {} random bitstrings...", opt.size);
+		let search_space: Vec<u128> = rng.sample_iter(&Standard).take(opt.size).collect();
+		eprintln!("Done.");
+		let mut rng = Pcg64::from_seed([6; 32]);
+
+		eprintln!(
+			"Generating {} random inliers with probability of bit mutation of {}...",
+			opt.inliers, opt.mutate_probability
+		);
+		let bernoulli = Bernoulli::new(opt.mutate_probability).unwrap();
+		let query_strings = search_space
+			.choose_multiple(&mut rng, opt.inliers)
+			.map(|&feature| {
+				let mut feature = feature;
+				for bit in 0..128 {
+					let choice: bool = rng.sample(&bernoulli);
+					feature ^= (choice as u128) << bit;
+				}
+				feature
+			})
+			.collect::<Vec<u128>>();
+		eprintln!("Done.");
+		(search_space, query_strings)
+	};
 
 	eprintln!(
 		"Computing the correct nearest neighbor distance for all {} inliers...",
