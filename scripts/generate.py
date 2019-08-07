@@ -8,23 +8,21 @@ Options:
 
 """
 
-import cv2
-import os
 import sys
-import os.path as path
+import cv2
 from progress.bar import Bar
 from docopt import docopt
 
 if __name__ == '__main__':
-    arguments = docopt(__doc__, options_first=True, version='1.0.0')
-    images = arguments["<image>"]
-    bar = Bar('Progress', max=len(images))
+    ARGUMENTS = docopt(__doc__, options_first=True, version='1.0.0')
+    IMAGES = ARGUMENTS["<image>"]
+    BAR = Bar('Progress', max=len(IMAGES))
 
-    for filename in images:
+    for filename in IMAGES:
         image = cv2.imread(filename)
         akaze = cv2.AKAZE.create()
         keypoints, descriptors = akaze.detectAndCompute(image, None)
         for descriptor in descriptors:
             sys.stdout.buffer.write(descriptor)
-        bar.next()
-    bar.finish()
+        BAR.next()
+    BAR.finish()
