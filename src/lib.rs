@@ -1,5 +1,5 @@
 use generic_array::{typenum, ArrayLength, GenericArray};
-use hamming_heap::{FixedHammingHeap128, HammingHeap128};
+use hamming_heap::{FixedHammingHeap, HammingHeap};
 use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64;
 use rustc_hash::FxHasher;
@@ -58,8 +58,8 @@ impl<N: ArrayLength<u32>> Node<N> {
 /// Contains all the state used when searching the HNSW
 #[derive(Clone, Debug, Default)]
 pub struct Searcher {
-    candidates: HammingHeap128<u32>,
-    nearest: FixedHammingHeap128<u32>,
+    candidates: HammingHeap<typenum::U129, u32>,
+    nearest: FixedHammingHeap<typenum::U129, u32>,
     seen: HashSet<u32, std::hash::BuildHasherDefault<FxHasher>>,
 }
 
@@ -358,7 +358,7 @@ where
 
     /// Creates a new node at a layer given its nearest neighbors in that layer.
     /// This contains Algorithm 3 from the paper, but also includes some additional logic.
-    fn create_node(&mut self, q: u128, nearest: &FixedHammingHeap128<u32>, layer: usize) {
+    fn create_node(&mut self, q: u128, nearest: &FixedHammingHeap<typenum::U129, u32>, layer: usize) {
         if layer == 0 {
             let new_index = self.zero.len();
             let mut neighbors: GenericArray<u32, M0> = std::iter::repeat(!0).collect();

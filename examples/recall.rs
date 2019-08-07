@@ -131,7 +131,7 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
 		.iter()
 		.cloned()
 		.map(|feature| {
-			let mut heap = hamming_heap::FixedHammingHeap128::default();
+			let mut heap: hamming_heap::FixedHammingHeap<typenum::U129, ()> = hamming_heap::FixedHammingHeap::default();
 			heap.set_capacity(opt.k);
 			for distance in search_space
 				.iter()
