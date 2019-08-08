@@ -34,10 +34,10 @@ fn bench_neighbors(c: &mut Criterion) {
     let hnsw_map = Rc::new(HashMap::<_, _>::from_iter(all_sizes.clone().map(|total| {
         eprintln!("Generating HNSW size {}...", total);
         let range = 0..total;
-        let mut hnsw: HNSW = HNSW::new();
+        let mut hnsw: DiscreteHNSW<Hamming<u128>> = DiscreteHNSW::new();
         let mut searcher = Searcher::default();
         for i in range.clone() {
-            hnsw.insert(all_input[i], &mut searcher);
+            hnsw.insert(Hamming(all_input[i]), &mut searcher);
         }
         // In the paper they choose 1000 samples that arent in the data set.
         let inliers: Vec<u128> = all_input[0..total]
@@ -67,7 +67,7 @@ fn bench_neighbors(c: &mut Criterion) {
                     bencher.iter(|| {
                         let feature = cycle_range.next().unwrap();
                         let mut neighbors = [0; 1];
-                        hnsw.nearest(feature, 24, &mut searcher, &mut neighbors)
+                        hnsw.nearest(&Hamming(feature), 24, &mut searcher, &mut neighbors)
                             .len()
                     });
                 }

@@ -18,6 +18,7 @@ rustc-hash = "1.0.1"
 hamming-heap = "0.3.0"
 generic-array = "0.13.2"
 typenum = "1.10.0"
+packed_simd = "0.3.3"
 
 [dev-dependencies]
 rand = "0.7.0"

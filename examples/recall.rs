@@ -20,7 +20,7 @@ struct Opt {
 	#[structopt(short = "m", long = "max_edges", default_value = "12")]
 	m: usize,
 	/// The dataset size to test on.
-	#[structopt(short = "s", long = "size", default_value = "65536")]
+	#[structopt(short = "s", long = "size", default_value = "10000")]
 	size: usize,
 	/// Total number of inlier search bitstrings.
 	///
@@ -41,7 +41,7 @@ struct Opt {
 	#[structopt(short = "e", long = "ending_ef", default_value = "32")]
 	ending_ef: usize,
 	/// The number of nearest neighbors.
-	#[structopt(short = "k", long = "neighbors", default_value = "1")]
+	#[structopt(short = "k", long = "neighbors", default_value = "2")]
 	k: usize,
 	/// Use the following file to load the search space.
 	#[structopt(short = "f", long = "file")]
@@ -131,7 +131,8 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
 		.iter()
 		.cloned()
 		.map(|feature| {
-			let mut heap: hamming_heap::FixedHammingHeap<typenum::U129, ()> = hamming_heap::FixedHammingHeap::default();
+			let mut heap: hamming_heap::FixedHammingHeap<typenum::U129, ()> =
+				hamming_heap::FixedHammingHeap::default();
 			heap.set_capacity(opt.k);
 			for distance in search_space
 				.iter()
@@ -147,10 +148,10 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
 	eprintln!("Done.");
 
 	eprintln!("Generating HNSW...");
-	let mut hnsw: HNSW<M, M0> = HNSW::new();
+	let mut hnsw: DiscreteHNSW<Hamming<u128>, M, M0> = DiscreteHNSW::new();
 	let mut searcher = Searcher::default();
 	for &feature in &search_space {
-		hnsw.insert(feature, &mut searcher);
+		hnsw.insert(Hamming(feature), &mut searcher);
 	}
 	eprintln!("Done.");
 
@@ -167,7 +168,9 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
 				let (ix, query_feature) = query.next().unwrap();
 				let correct_worst_distance = correct_worst_distances[ix];
 				// Go through all the features.
-				for &mut feature_ix in hnsw.nearest(query_feature, ef, searcher, &mut dest) {
+				for &mut feature_ix in
+					hnsw.nearest(&Hamming(query_feature), ef, searcher, &mut dest)
+				{
 					// Any feature that is less than or equal to the worst real nearest neighbor distance is correct.
 					if (search_space[feature_ix as usize] ^ query_feature).count_ones()
 						<= correct_worst_distance
@@ -273,7 +276,10 @@ fn main() {
 
 	fg.axes2d()
 		.set_title(
-			&format!("{}-NN Recall Graph (M = {}, size = {})", opt.k, opt.m, opt.size),
+			&format!(
+				"{}-NN Recall Graph (M = {}, size = {})",
+				opt.k, opt.m, opt.size
+			),
 			&[],
 		)
 		.set_x_label("Recall Rate", &[])

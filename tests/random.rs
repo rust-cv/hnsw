@@ -14,7 +14,7 @@ const SEARCH_SPACE_SIZE: usize = 1 << 16;
 fn linear_1_nn() {
     let mut searcher = Searcher::default();
     let searcher = &mut searcher;
-    let mut hnsw: HNSW = HNSW::new();
+    let mut hnsw: DiscreteHNSW<Hamming<u128>> = DiscreteHNSW::new();
     let mut output = [!0; 1];
 
     let prng = Pcg64::from_seed([5; 32]);
@@ -25,7 +25,7 @@ fn linear_1_nn() {
     let search = (&mut rngiter).take(100).collect::<Vec<u128>>();
 
     for &feature in &space {
-        hnsw.insert(feature, searcher);
+        hnsw.insert(Hamming(feature), searcher);
     }
 
     let mut pass = 0;
@@ -38,7 +38,7 @@ fn linear_1_nn() {
             .min_by_key(|(_, &space_feature)| (feature ^ space_feature).count_ones())
             .unwrap();
         // Use HNSW to find the nearest neighbor.
-        hnsw.nearest(feature, 24, searcher, &mut output);
+        hnsw.nearest(&Hamming(feature), 24, searcher, &mut output);
         // Get their respective found features.
         let linear = *nearest.1;
         let hnsw = space[output[0] as usize];
@@ -60,7 +60,7 @@ fn linear_1_nn() {
 fn linear_1_nn_inliers() {
     let mut searcher = Searcher::default();
     let searcher = &mut searcher;
-    let mut hnsw: HNSW = HNSW::new();
+    let mut hnsw: DiscreteHNSW<Hamming<u128>> = DiscreteHNSW::new();
     let mut output = [!0; 1];
 
     const BIT_DIFF_PROBABILITY_OF_INLIER: f64 = 0.0859;
@@ -86,7 +86,7 @@ fn linear_1_nn_inliers() {
         .collect::<Vec<u128>>();
 
     for &feature in &space {
-        hnsw.insert(feature, searcher);
+        hnsw.insert(Hamming(feature), searcher);
     }
 
     let mut pass = 0;
@@ -99,7 +99,7 @@ fn linear_1_nn_inliers() {
             .min_by_key(|(_, &space_feature)| (feature ^ space_feature).count_ones())
             .unwrap();
         // Use HNSW to find the nearest neighbor.
-        hnsw.nearest(feature, 24, searcher, &mut output);
+        hnsw.nearest(&Hamming(feature), 24, searcher, &mut output);
         // Get their respective found features.
         let linear = *nearest.1;
         let hnsw = space[output[0] as usize];

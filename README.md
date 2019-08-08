@@ -17,6 +17,10 @@ RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --example recall -- --help
 ![Recall 10000](http://vadixidav.github.io/hnsw/recall_10000.png)
 ![Recall 1000000](http://vadixidav.github.io/hnsw/recall_1000000.png)
 
+This crate may take a while to compile due to the use of `typenum` and `generic-array`. If you dislike this, consider contributing to some issues labeled [A-const-generics](https://github.com/rust-lang/rust/labels/A-const-generics) in Rust to help push along the const generics support in the compiler.
+
+## Implementation
+
 This is based on the paper ["Efficient and robust approximate nearest neighbor search using Hierarchical Navigable Small World graphs"](https://arxiv.org/pdf/1603.09320.pdf) by Yu. A. Malkov and D. A. Yashunin. This paper builds on the [original paper for NSW](http://www.iiis.org/CDs2011/CD2011IDI/ICTA_2011/PapersPdf/CT175ON.pdf). There are multiple papers written by the authors on NSW, of which that is the last and most up-to-date.
 
 HNSW is an algorithm that creates layers of NSW graphs where the top layer is least refined and the "zero layer" is the most refined. The graph nodes are items from the search set in all cases and `M` edges are chosen by finding the `M` nearest-neighbors according to the graph's ANN search. The authors of HSNW probabalistically select which items from the search set to include in each graph layer and below to maintain global connectivity. This is effectively combining the concept of skip lists with NSW.

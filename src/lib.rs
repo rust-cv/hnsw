@@ -1,4 +1,9 @@
-use generic_array::{typenum, ArrayLength, GenericArray};
+mod discrete_distance;
+
+pub use discrete_distance::*;
+
+pub use generic_array::{typenum, ArrayLength, GenericArray};
+
 use hamming_heap::{FixedHammingHeap, HammingHeap};
 use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64;
@@ -9,16 +14,24 @@ const NUM_PRESERVED_CANDIDATES: usize = 1;
 const NUM_PRESERVED_CANDIDATES_CONSTRUCTION: usize = 1;
 const EF_CONSTURCTION: usize = 400;
 
-/// This provides a HNSW implementation for 128-bit hamming space.
+/// This provides a HNSW implementation for any discrete distance function.
+///
+/// This can achieve much higher performance than a non-discrete distance function
+/// due to the discrete distance priority queue used to search. This can be combined with
+/// the `Hamming` struct to add binary features to the HNSW.
 #[derive(Clone)]
-pub struct HNSW<M: ArrayLength<u32> = typenum::U12, M0: ArrayLength<u32> = typenum::U24, R = Pcg64>
-{
+pub struct DiscreteHNSW<
+    T: DiscreteDistance,
+    M: ArrayLength<u32> = typenum::U12,
+    M0: ArrayLength<u32> = typenum::U24,
+    R = Pcg64,
+> {
     /// Contains the zero layer.
     zero: Vec<ZeroNode<M0>>,
     /// Contains the features of the zero layer.
     /// These are stored separately to allow SIMD speedup in the future by
     /// grouping small worlds of features together.
-    features: Vec<u128>,
+    features: Vec<T>,
     /// Contains each non-zero layer.
     layers: Vec<Vec<Node<M>>>,
     /// This needs to create resonably random outputs to determine the levels of insertions.
@@ -56,14 +69,14 @@ impl<N: ArrayLength<u32>> Node<N> {
 }
 
 /// Contains all the state used when searching the HNSW
-#[derive(Clone, Debug, Default)]
-pub struct Searcher {
-    candidates: HammingHeap<typenum::U129, u32>,
-    nearest: FixedHammingHeap<typenum::U129, u32>,
+#[derive(Clone, Debug)]
+pub struct Searcher<T: DiscreteDistance> {
+    candidates: HammingHeap<T::Distances, u32>,
+    nearest: FixedHammingHeap<T::Distances, u32>,
     seen: HashSet<u32, std::hash::BuildHasherDefault<FxHasher>>,
 }
 
-impl Searcher {
+impl<T: DiscreteDistance> Searcher<T> {
     pub fn new() -> Self {
         Default::default()
     }
@@ -75,7 +88,17 @@ impl Searcher {
     }
 }
 
-impl<M: ArrayLength<u32>, M0: ArrayLength<u32>, R> HNSW<M, M0, R>
+impl<T: DiscreteDistance> Default for Searcher<T> {
+    fn default() -> Self {
+        Self {
+            candidates: HammingHeap::default(),
+            nearest: FixedHammingHeap::default(),
+            seen: HashSet::default(),
+        }
+    }
+}
+
+impl<T: DiscreteDistance, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> DiscreteHNSW<T, M, M0, R>
 where
     R: RngCore + SeedableRng,
 {
@@ -98,7 +121,7 @@ where
     }
 }
 
-impl<M: ArrayLength<u32>, M0: ArrayLength<u32>, R> HNSW<M, M0, R>
+impl<T: DiscreteDistance, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> DiscreteHNSW<T, M, M0, R>
 where
     R: RngCore,
 {
@@ -126,7 +149,7 @@ where
     }
 
     /// Inserts a feature into the HNSW.
-    pub fn insert(&mut self, q: u128, searcher: &mut Searcher) -> u32 {
+    pub fn insert(&mut self, q: T, searcher: &mut Searcher<T>) -> u32 {
         // Get the level of this feature.
         let level = self.random_level();
 
@@ -152,7 +175,7 @@ where
         }
 
         self.initialize_searcher(
-            q,
+            &q,
             searcher,
             if level >= self.layers.len() {
                 EF_CONSTURCTION
@@ -164,7 +187,7 @@ where
         // Find the entry point on the level it was created by searching normally until its level.
         for ix in (level..self.layers.len()).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_layer(q, searcher, &self.layers[ix]);
+            self.search_layer(&q, searcher, &self.layers[ix]);
             // Then lower the search only after we create the node.
             self.lower_search(
                 &self.layers[ix],
@@ -177,9 +200,9 @@ where
         // Then start from its level and connect it to its nearest neighbors.
         for ix in (0..std::cmp::min(level, self.layers.len())).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_layer(q, searcher, &self.layers[ix]);
+            self.search_layer(&q, searcher, &self.layers[ix]);
             // Then use the results of that search on this layer to connect the nodes.
-            self.create_node(q, &searcher.nearest, ix + 1);
+            self.create_node(&q, &searcher.nearest, ix + 1);
             // Then lower the search only after we create the node.
             self.lower_search(
                 &self.layers[ix],
@@ -190,8 +213,8 @@ where
         }
 
         // Also search and connect the node to the zero layer.
-        self.search_zero_layer(q, searcher);
-        self.create_node(q, &searcher.nearest, 0);
+        self.search_zero_layer(&q, searcher);
+        self.create_node(&q, &searcher.nearest, 0);
         // Add the feature to the zero layer.
         self.features.push(q);
 
@@ -219,9 +242,9 @@ where
     /// Returns a slice of the filled neighbors.
     pub fn nearest<'a>(
         &self,
-        q: u128,
+        q: &T,
         ef: usize,
-        searcher: &mut Searcher,
+        searcher: &mut Searcher<T>,
         dest: &'a mut [u32],
     ) -> &'a mut [u32] {
         // If there is nothing in here, then just return nothing.
@@ -246,8 +269,8 @@ where
         searcher.nearest.fill_slice(dest)
     }
 
-    pub fn feature(&self, item: u32) -> u128 {
-        self.features[item as usize]
+    pub fn feature(&self, item: u32) -> &T {
+        &self.features[item as usize]
     }
 
     pub fn len(&self) -> usize {
@@ -260,7 +283,7 @@ where
 
     /// Greedily finds the approximate nearest neighbors to `q` in a non-zero layer.
     /// This corresponds to Algorithm 2 in the paper.
-    fn search_layer(&self, q: u128, searcher: &mut Searcher, layer: &[Node<M>]) {
+    fn search_layer(&self, q: &T, searcher: &mut Searcher<T>, layer: &[Node<M>]) {
         while let Some((_, node)) = searcher.candidates.pop() {
             for neighbor in layer[node as usize].neighbors() {
                 let neighbor_node = &layer[neighbor as usize];
@@ -270,7 +293,7 @@ where
                 if searcher.seen.insert(neighbor_node.zero_node) {
                     // Compute the distance of this neighbor.
                     let distance =
-                        (q ^ self.features[neighbor_node.zero_node as usize]).count_ones();
+                        T::discrete_distance(q, &self.features[neighbor_node.zero_node as usize]);
                     // Attempt to insert into nearest queue.
                     if searcher.nearest.push(distance, neighbor) {
                         // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
@@ -282,7 +305,7 @@ where
     }
 
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
-    fn search_zero_layer(&self, q: u128, searcher: &mut Searcher) {
+    fn search_zero_layer(&self, q: &T, searcher: &mut Searcher<T>) {
         while let Some((_, node)) = searcher.candidates.pop() {
             for neighbor in self.zero[node as usize].neighbors() {
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
@@ -290,7 +313,7 @@ where
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
                 if searcher.seen.insert(neighbor) {
                     // Compute the distance of this neighbor.
-                    let distance = (q ^ self.features[neighbor as usize]).count_ones();
+                    let distance = T::discrete_distance(q, &self.features[neighbor as usize]);
                     // Attempt to insert into nearest queue.
                     if searcher.nearest.push(distance, neighbor) {
                         // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
@@ -304,7 +327,13 @@ where
     /// Ready a search for the next level down.
     ///
     /// `m` is the maximum number of nearest neighbors to consider during the search.
-    fn lower_search(&self, layer: &[Node<M>], searcher: &mut Searcher, m: usize, preserve: usize) {
+    fn lower_search(
+        &self,
+        layer: &[Node<M>],
+        searcher: &mut Searcher<T>,
+        m: usize,
+        preserve: usize,
+    ) {
         // Clear the candidates so we can fill them with the best nodes in the last layer.
         searcher.candidates.clear();
         // Only preserve some of the candidates. The original paper's algorithm uses `1` every time,
@@ -324,12 +353,12 @@ where
 
     /// Resets a searcher, but does not set the `cap` on the nearest neighbors.
     /// Must be passed the query element `q`.
-    fn initialize_searcher(&self, q: u128, searcher: &mut Searcher, cap: usize) {
+    fn initialize_searcher(&self, q: &T, searcher: &mut Searcher<T>, cap: usize) {
         // Clear the searcher.
         searcher.clear();
         searcher.nearest.set_capacity(cap);
         // Add the entry point.
-        let entry_distance = (q ^ self.entry_feature()).count_ones();
+        let entry_distance = T::discrete_distance(q, self.entry_feature());
         searcher.candidates.push(entry_distance, 0);
         searcher.nearest.push(entry_distance, 0);
         searcher.seen.insert(
@@ -341,11 +370,11 @@ where
     }
 
     /// Gets the entry point's feature.
-    fn entry_feature(&self) -> u128 {
+    fn entry_feature(&self) -> &T {
         if let Some(last_layer) = self.layers.last() {
-            self.features[last_layer[0].zero_node as usize]
+            &self.features[last_layer[0].zero_node as usize]
         } else {
-            self.features[0]
+            &self.features[0]
         }
     }
 
@@ -358,7 +387,7 @@ where
 
     /// Creates a new node at a layer given its nearest neighbors in that layer.
     /// This contains Algorithm 3 from the paper, but also includes some additional logic.
-    fn create_node(&mut self, q: u128, nearest: &FixedHammingHeap<typenum::U129, u32>, layer: usize) {
+    fn create_node(&mut self, q: &T, nearest: &FixedHammingHeap<T::Distances, u32>, layer: usize) {
         if layer == 0 {
             let new_index = self.zero.len();
             let mut neighbors: GenericArray<u32, M0> = std::iter::repeat(!0).collect();
@@ -389,18 +418,18 @@ where
     }
 
     /// Attempts to add a neighbor to a target node.
-    fn add_neighbor(&mut self, q: u128, node_ix: u32, target_ix: u32, layer: usize) {
+    fn add_neighbor(&mut self, q: &T, node_ix: u32, target_ix: u32, layer: usize) {
         // Get the feature for the target and get the neighbor slice for the target.
         // This is different for the zero layer.
         let (target_feature, target_neighbors) = if layer == 0 {
             (
-                self.features[target_ix as usize],
+                &self.features[target_ix as usize],
                 &self.zero[target_ix as usize].neighbors[..],
             )
         } else {
             let target = &self.layers[layer - 1][target_ix as usize];
             (
-                self.features[target.zero_node as usize],
+                &self.features[target.zero_node as usize],
                 &target.neighbors[..],
             )
         };
@@ -415,13 +444,14 @@ where
                     129
                 } else {
                     // Compute the distance. The feature is looked up differently for the zero layer.
-                    (target_feature
-                        ^ self.features[if layer == 0 {
+                    T::discrete_distance(
+                        target_feature,
+                        &self.features[if layer == 0 {
                             n as usize
                         } else {
                             self.layers[layer - 1][n as usize].zero_node as usize
-                        }])
-                    .count_ones()
+                        }],
+                    )
                 };
                 (ix, distance)
             })
@@ -431,7 +461,7 @@ where
 
         // If this is better than the worst, insert it in the worst's place.
         // This is also different for the zero layer.
-        if (q ^ target_feature).count_ones() < worst_distance {
+        if T::discrete_distance(q, target_feature) < worst_distance {
             if layer == 0 {
                 self.zero[target_ix as usize].neighbors[worst_ix] = node_ix;
             } else {
@@ -441,7 +471,8 @@ where
     }
 }
 
-impl<M: ArrayLength<u32>, M0: ArrayLength<u32>, R> Default for HNSW<M, M0, R>
+impl<T: DiscreteDistance, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> Default
+    for DiscreteHNSW<T, M, M0, R>
 where
     R: SeedableRng,
 {
