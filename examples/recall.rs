@@ -273,7 +273,7 @@ fn main() {
 
 	fg.axes2d()
 		.set_title(
-			&format!("1-NN Recall Graph (M = {}, size = {})", opt.m, opt.size),
+			&format!("{}-NN Recall Graph (M = {}, size = {})", opt.k, opt.m, opt.size),
 			&[],
 		)
 		.set_x_label("Recall Rate", &[])
