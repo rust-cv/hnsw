@@ -149,6 +149,9 @@ fn process<T: DiscreteDistance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32
 			{
 				let pos = v.binary_search(&distance).unwrap_or_else(|e| e);
 				v.insert(pos, distance);
+				if v.len() > opt.k {
+					v.resize(opt.k, 0);
+				}
 			}
 			// Get the worst distance
 			v.into_iter().take(opt.k).last().unwrap()
