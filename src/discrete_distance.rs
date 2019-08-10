@@ -8,6 +8,7 @@ pub trait DiscreteDistance {
 }
 
 /// Treats each bit contained in this struct as its own dimension.
+#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Hamming<T>(pub T);
 
 impl DiscreteDistance for Hamming<u8> {

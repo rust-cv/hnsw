@@ -1,9 +1,10 @@
-use byteorder::ByteOrder;
+use byteorder::{ByteOrder, NativeEndian};
 use generic_array::{typenum, ArrayLength};
 use gnuplot::*;
 use hnsw::*;
-use rand::distributions::{Bernoulli, Standard};
-use rand::seq::SliceRandom;
+use itertools::Itertools;
+use packed_simd::{u128x2, u128x4};
+use rand::distributions::Standard;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
 use std::cell::RefCell;
@@ -16,29 +17,38 @@ use structopt::StructOpt;
 struct Opt {
 	/// The value of M to use.
 	///
-	/// This can only be between 1 and 64 inclusive. M0 is set to 2 * M.
-	#[structopt(short = "m", long = "max_edges", default_value = "12")]
+	/// This can only be between 1 and 52 inclusive and a multiple of 4.
+	/// M0 is set to 2 * M.
+	#[structopt(short = "m", long = "max_edges", default_value = "24")]
 	m: usize,
 	/// The dataset size to test on.
 	#[structopt(short = "s", long = "size", default_value = "10000")]
 	size: usize,
-	/// Total number of inlier search bitstrings.
+	/// Total number of query bitstrings.
 	///
 	/// The higher this is, the better the quality of the output data and statistics.
-	#[structopt(short = "i", long = "inliers", default_value = "1000")]
-	inliers: usize,
-	/// The probability of bit flip in generated inliers (0.5 is totally random/no correlation).
+	#[structopt(short = "q", long = "queries", default_value = "10000")]
+	num_queries: usize,
+	/// The bitstring length.
 	///
-	/// Examples:
-	/// Binarized SIFT (128-bit): 0.0859
+	/// This is the length of bitstrings in bits. The descriptor_stride (-d)
+	/// parameter must exceed this value.
 	///
-	#[structopt(short = "p", long = "mutate_probability", default_value = "0.5")]
-	mutate_probability: f64,
+	/// Possible values:
+	/// - 8
+	/// - 16
+	/// - 32
+	/// - 64
+	/// - 128
+	/// - 256
+	/// - 512
+	#[structopt(short = "l", long = "bitstring_length", default_value = "256")]
+	bitstring_length: usize,
 	/// The beginning ef value.
 	#[structopt(short = "b", long = "beginning_ef", default_value = "1")]
 	beginning_ef: usize,
 	/// The ending ef value.
-	#[structopt(short = "e", long = "ending_ef", default_value = "32")]
+	#[structopt(short = "e", long = "ending_ef", default_value = "64")]
 	ending_ef: usize,
 	/// The number of nearest neighbors.
 	#[structopt(short = "k", long = "neighbors", default_value = "2")]
@@ -55,14 +65,17 @@ struct Opt {
 	descriptor_stride: usize,
 }
 
-fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
+fn process<T: DiscreteDistance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
+	opt: &Opt,
+	conv: fn(&[u8]) -> T,
+) -> (Vec<f64>, Vec<f64>) {
 	assert!(
 		opt.k <= opt.size,
 		"You must choose a dataset size larger or equal to the test search size"
 	);
 	let rng = Pcg64::from_seed([5; 32]);
 
-	let (search_space, query_strings): (Vec<u128>, Vec<u128>) = if let Some(filepath) = &opt.file {
+	let (search_space, query_strings): (Vec<T>, Vec<T>) = if let Some(filepath) = &opt.file {
 		eprintln!(
 			"Reading {} search space descriptors of size {} bytes from file \"{}\"...",
 			opt.size,
@@ -72,86 +85,82 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
 		let mut file = std::fs::File::open(filepath).expect("unable to open file");
 		let mut v = vec![0u8; opt.size * opt.descriptor_stride];
 		file.read_exact(&mut v).expect(
-			"unable to read enough search descriptors from the file (try decreasing -s/-i)",
+			"unable to read enough search descriptors from the file (try decreasing -s/-q)",
 		);
-		let search_space = v
-			.chunks_exact(opt.descriptor_stride)
-			.map(byteorder::NativeEndian::read_u128)
-			.collect();
+		let search_space = v.chunks_exact(opt.descriptor_stride).map(conv).collect();
 		eprintln!("Done.");
 
 		eprintln!(
-			"Reading {} inlier descriptors of size {} bytes from file \"{}\"...",
-			opt.inliers,
+			"Reading {} query descriptors of size {} bytes from file \"{}\"...",
+			opt.num_queries,
 			opt.descriptor_stride,
 			filepath.display()
 		);
-		let mut v = vec![0u8; opt.inliers * opt.descriptor_stride];
-		file.read_exact(&mut v).expect(
-			"unable to read enough inlier descriptors from the file (try decreasing -i/-s)",
-		);
-		let query_strings = v
-			.chunks_exact(opt.descriptor_stride)
-			.map(byteorder::NativeEndian::read_u128)
-			.collect();
+		let mut v = vec![0u8; opt.num_queries * opt.descriptor_stride];
+		file.read_exact(&mut v)
+			.expect("unable to read enough query descriptors from the file (try decreasing -q/-s)");
+		let query_strings = v.chunks_exact(opt.descriptor_stride).map(conv).collect();
 		eprintln!("Done.");
 
 		(search_space, query_strings)
 	} else {
 		eprintln!("Generating {} random bitstrings...", opt.size);
-		let search_space: Vec<u128> = rng.sample_iter(&Standard).take(opt.size).collect();
+		let search_space: Vec<T> = rng
+			.sample_iter(&Standard)
+			.map(|n: u8| n)
+			.chunks(64)
+			.into_iter()
+			.map(|bs| conv(&bs.collect::<Vec<u8>>()))
+			.take(opt.size)
+			.collect();
 		eprintln!("Done.");
-		let mut rng = Pcg64::from_seed([6; 32]);
+
+		// Create another RNG to prevent potential correlation.
+		let rng = Pcg64::from_seed([6; 32]);
 
 		eprintln!(
-			"Generating {} random inliers with probability of bit mutation of {}...",
-			opt.inliers, opt.mutate_probability
+			"Generating {} independent random query strings...",
+			opt.num_queries
 		);
-		let bernoulli = Bernoulli::new(opt.mutate_probability).unwrap();
-		let query_strings = search_space
-			.choose_multiple(&mut rng, opt.inliers)
-			.map(|&feature| {
-				let mut feature = feature;
-				for bit in 0..128 {
-					let choice: bool = rng.sample(&bernoulli);
-					feature ^= (choice as u128) << bit;
-				}
-				feature
-			})
-			.collect::<Vec<u128>>();
+		let query_strings: Vec<T> = rng
+			.sample_iter(&Standard)
+			.map(|n: u8| n)
+			.chunks(64)
+			.into_iter()
+			.map(|bs| conv(&bs.collect::<Vec<u8>>()))
+			.take(opt.size)
+			.collect();
 		eprintln!("Done.");
 		(search_space, query_strings)
 	};
 
 	eprintln!(
-		"Computing the correct nearest neighbor distance for all {} inliers...",
-		opt.inliers
+		"Computing the correct nearest neighbor distance for all {} queries...",
+		opt.num_queries
 	);
 	let correct_worst_distances: Vec<u32> = query_strings
 		.iter()
 		.cloned()
 		.map(|feature| {
-			let mut heap: hamming_heap::FixedHammingHeap<typenum::U129, ()> =
-				hamming_heap::FixedHammingHeap::default();
-			heap.set_capacity(opt.k);
+			let mut v = vec![];
 			for distance in search_space
 				.iter()
-				.cloned()
-				.map(|n| (feature ^ n).count_ones())
+				.map(|n| T::discrete_distance(n, &feature))
 			{
-				heap.push(distance, ());
+				let pos = v.binary_search(&distance).unwrap_or_else(|e| e);
+				v.insert(pos, distance);
 			}
 			// Get the worst distance
-			heap.iter().last().unwrap().0
+			v.into_iter().take(opt.k).last().unwrap()
 		})
 		.collect();
 	eprintln!("Done.");
 
 	eprintln!("Generating HNSW...");
-	let mut hnsw: DiscreteHNSW<Hamming<u128>, M, M0> = DiscreteHNSW::new();
-	let mut searcher = Searcher::default();
-	for &feature in &search_space {
-		hnsw.insert(Hamming(feature), &mut searcher);
+	let mut hnsw: DiscreteHNSW<T, M, M0> = DiscreteHNSW::new();
+	let mut searcher: Searcher<T> = Searcher::default();
+	for feature in &search_space {
+		hnsw.insert(feature.clone(), &mut searcher);
 	}
 	eprintln!("Done.");
 
@@ -168,11 +177,9 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
 				let (ix, query_feature) = query.next().unwrap();
 				let correct_worst_distance = correct_worst_distances[ix];
 				// Go through all the features.
-				for &mut feature_ix in
-					hnsw.nearest(&Hamming(query_feature), ef, searcher, &mut dest)
-				{
+				for &mut feature_ix in hnsw.nearest(&query_feature, ef, searcher, &mut dest) {
 					// Any feature that is less than or equal to the worst real nearest neighbor distance is correct.
-					if (search_space[feature_ix as usize] ^ query_feature).count_ones()
+					if T::discrete_distance(&search_space[feature_ix as usize], &query_feature)
 						<= correct_worst_distance
 					{
 						*correct.borrow_mut() += 1;
@@ -195,78 +202,65 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
 	(recalls, times)
 }
 
+macro_rules! process_m {
+	( $opt:expr, $m:ty, $m0:ty ) => {
+		match $opt.bitstring_length {
+			8 => process::<_, $m, $m0>(&$opt, |b| Hamming(b[0])),
+			16 => process::<_, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u16(b))),
+			32 => process::<_, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u32(b))),
+			64 => process::<_, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u64(b))),
+			128 => process::<_, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u128(b))),
+			256 => process::<_, $m, $m0>(&$opt, make_u128x2),
+			512 => process::<_, $m, $m0>(&$opt, make_u128x4),
+			_ => panic!("error: incorrect bitstring_length, see --help for choices"),
+			}
+	};
+}
+
 fn main() {
 	let opt = Opt::from_args();
 
+	fn make_u128x2(bytes: &[u8]) -> Hamming<u128x2> {
+		Hamming(
+			[
+				byteorder::NativeEndian::read_u128(&bytes[0..16]),
+				byteorder::NativeEndian::read_u128(&bytes[16..32]),
+			]
+			.into(),
+		)
+	}
+
+	fn make_u128x4(bytes: &[u8]) -> Hamming<u128x4> {
+		Hamming(
+			[
+				byteorder::NativeEndian::read_u128(&bytes[0..16]),
+				byteorder::NativeEndian::read_u128(&bytes[16..32]),
+				byteorder::NativeEndian::read_u128(&bytes[32..48]),
+				byteorder::NativeEndian::read_u128(&bytes[48..64]),
+			]
+			.into(),
+		)
+	}
+
 	let (recalls, times) = {
 		use typenum::*;
+		// This can be increased indefinitely at the expense of compile time.
 		match opt.m {
-			1 => process::<U1, U2>(&opt),
-			2 => process::<U2, U4>(&opt),
-			3 => process::<U3, U6>(&opt),
-			4 => process::<U4, U8>(&opt),
-			5 => process::<U5, U10>(&opt),
-			6 => process::<U6, U12>(&opt),
-			7 => process::<U7, U14>(&opt),
-			8 => process::<U8, U16>(&opt),
-			9 => process::<U9, U18>(&opt),
-			10 => process::<U10, U20>(&opt),
-			11 => process::<U11, U22>(&opt),
-			12 => process::<U12, U24>(&opt),
-			13 => process::<U13, U26>(&opt),
-			14 => process::<U14, U28>(&opt),
-			15 => process::<U15, U30>(&opt),
-			16 => process::<U16, U32>(&opt),
-			17 => process::<U17, U34>(&opt),
-			18 => process::<U18, U36>(&opt),
-			19 => process::<U19, U38>(&opt),
-			20 => process::<U20, U40>(&opt),
-			21 => process::<U21, U42>(&opt),
-			22 => process::<U22, U44>(&opt),
-			23 => process::<U23, U46>(&opt),
-			24 => process::<U24, U48>(&opt),
-			25 => process::<U25, U50>(&opt),
-			26 => process::<U26, U52>(&opt),
-			27 => process::<U27, U54>(&opt),
-			28 => process::<U28, U56>(&opt),
-			29 => process::<U29, U58>(&opt),
-			30 => process::<U30, U60>(&opt),
-			31 => process::<U31, U62>(&opt),
-			32 => process::<U32, U64>(&opt),
-			33 => process::<U33, U66>(&opt),
-			34 => process::<U34, U68>(&opt),
-			35 => process::<U35, U70>(&opt),
-			36 => process::<U36, U72>(&opt),
-			37 => process::<U37, U74>(&opt),
-			38 => process::<U38, U76>(&opt),
-			39 => process::<U39, U78>(&opt),
-			40 => process::<U40, U80>(&opt),
-			41 => process::<U41, U82>(&opt),
-			42 => process::<U42, U84>(&opt),
-			43 => process::<U43, U86>(&opt),
-			44 => process::<U44, U88>(&opt),
-			45 => process::<U45, U90>(&opt),
-			46 => process::<U46, U92>(&opt),
-			47 => process::<U47, U94>(&opt),
-			48 => process::<U48, U96>(&opt),
-			49 => process::<U49, U98>(&opt),
-			50 => process::<U50, U100>(&opt),
-			51 => process::<U51, U102>(&opt),
-			52 => process::<U52, U104>(&opt),
-			53 => process::<U53, U106>(&opt),
-			54 => process::<U54, U108>(&opt),
-			55 => process::<U55, U110>(&opt),
-			56 => process::<U56, U112>(&opt),
-			57 => process::<U57, U114>(&opt),
-			58 => process::<U58, U116>(&opt),
-			59 => process::<U59, U118>(&opt),
-			60 => process::<U60, U120>(&opt),
-			61 => process::<U61, U122>(&opt),
-			62 => process::<U62, U124>(&opt),
-			63 => process::<U63, U126>(&opt),
-			64 => process::<U64, U128>(&opt),
+			4 => process_m!(opt, U4, U8),
+			8 => process_m!(opt, U8, U16),
+			12 => process_m!(opt, U12, U24),
+			16 => process_m!(opt, U16, U32),
+			20 => process_m!(opt, U20, U40),
+			24 => process_m!(opt, U24, U48),
+			28 => process_m!(opt, U28, U56),
+			32 => process_m!(opt, U32, U64),
+			36 => process_m!(opt, U36, U72),
+			40 => process_m!(opt, U40, U80),
+			44 => process_m!(opt, U44, U88),
+			48 => process_m!(opt, U48, U96),
+			52 => process_m!(opt, U52, U104),
 			_ => {
-				eprintln!("Only M between 1 and 64 inclusive are allowed");
+				eprintln!("Only M between 4 and 52 inclusive and multiples of 4 are allowed");
 				return;
 			}
 		}
@@ -277,8 +271,8 @@ fn main() {
 	fg.axes2d()
 		.set_title(
 			&format!(
-				"{}-NN Recall Graph (M = {}, size = {})",
-				opt.k, opt.m, opt.size
+				"{}-NN Recall Graph (bits = {}, size = {}, M = {})",
+				opt.k, opt.bitstring_length, opt.size, opt.m
 			),
 			&[],
 		)
