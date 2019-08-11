@@ -180,7 +180,11 @@ where
             self.lower_search(
                 &self.layers[ix],
                 searcher,
-                if ix == level { self.params.ef_construction } else { 1 }
+                if ix == level {
+                    self.params.ef_construction
+                } else {
+                    1
+                },
             );
         }
 
@@ -191,11 +195,7 @@ where
             // Then use the results of that search on this layer to connect the nodes.
             self.create_node(&q, &searcher.nearest, ix + 1);
             // Then lower the search only after we create the node.
-            self.lower_search(
-                &self.layers[ix],
-                searcher,
-                self.params.ef_construction,
-            );
+            self.lower_search(&self.layers[ix], searcher, self.params.ef_construction);
         }
 
         // Also search and connect the node to the zero layer.
@@ -242,11 +242,7 @@ where
 
         for (ix, layer) in self.layers.iter().enumerate().rev() {
             self.search_layer(q, searcher, layer);
-            self.lower_search(
-                layer,
-                searcher,
-                if ix == 0 { ef } else { 1 },
-            );
+            self.lower_search(layer, searcher, if ix == 0 { ef } else { 1 });
         }
 
         self.search_zero_layer(q, searcher);
@@ -312,12 +308,7 @@ where
     /// Ready a search for the next level down.
     ///
     /// `m` is the maximum number of nearest neighbors to consider during the search.
-    fn lower_search(
-        &self,
-        layer: &[Node<M>],
-        searcher: &mut Searcher<T>,
-        m: usize,
-    ) {
+    fn lower_search(&self, layer: &[Node<M>], searcher: &mut Searcher<T>, m: usize) {
         // Clear the candidates so we can fill them with the best nodes in the last layer.
         searcher.candidates.clear();
         // Only preserve some of the candidates. The original paper's algorithm uses `1` every time,
