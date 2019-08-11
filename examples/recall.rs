@@ -161,7 +161,7 @@ fn process<T: DiscreteDistance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32
 
 	eprintln!("Generating HNSW...");
 	let mut hnsw: DiscreteHNSW<T, M, M0> = DiscreteHNSW::new();
-	let mut searcher: Searcher<T> = Searcher::default();
+	let mut searcher: DiscreteSearcher<T> = DiscreteSearcher::default();
 	for feature in &search_space {
 		hnsw.insert(feature.clone(), &mut searcher);
 	}

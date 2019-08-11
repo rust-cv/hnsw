@@ -12,7 +12,7 @@ const SEARCH_SPACE_SIZE: usize = 1 << 16;
 
 #[test]
 fn linear_1_nn() {
-    let mut searcher = Searcher::default();
+    let mut searcher = DiscreteSearcher::default();
     let searcher = &mut searcher;
     let mut hnsw: DiscreteHNSW<Hamming<u128>> = DiscreteHNSW::new();
     let mut output = [!0; 1];
@@ -58,7 +58,7 @@ fn linear_1_nn() {
 /// Does the same thing as linear_1_nn, but purposefully generates inliers in the search set.
 #[test]
 fn linear_1_nn_inliers() {
-    let mut searcher = Searcher::default();
+    let mut searcher = DiscreteSearcher::default();
     let searcher = &mut searcher;
     let mut hnsw: DiscreteHNSW<Hamming<u128>> = DiscreteHNSW::new();
     let mut output = [!0; 1];

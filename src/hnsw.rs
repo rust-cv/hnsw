@@ -1,19 +1,16 @@
 use crate::*;
 
-use hamming_heap::{FixedHammingHeap, HammingHeap};
 use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64;
 use rustc_hash::FxHasher;
 use std::collections::HashSet;
 
-/// This provides a HNSW implementation for any discrete distance function.
+/// This provides a HNSW implementation for any distance function.
 ///
-/// This can achieve much higher performance than a non-discrete distance function
-/// due to the discrete distance priority queue used to search. This can be combined with
-/// the `Hamming` struct to add binary features to the HNSW.
+/// The type `T` must implement `FloatingDistance` to get implementations.
 #[derive(Clone)]
-pub struct DiscreteHNSW<
-    T: DiscreteDistance,
+pub struct HNSW<
+    T,
     M: ArrayLength<u32> = typenum::U12,
     M0: ArrayLength<u32> = typenum::U24,
     R = Pcg64,
@@ -63,14 +60,14 @@ impl<N: ArrayLength<u32>> Node<N> {
 }
 
 /// Contains all the state used when searching the HNSW
-#[derive(Clone, Debug)]
-pub struct DiscreteSearcher<T: DiscreteDistance> {
-    candidates: HammingHeap<T::Distances, u32>,
-    nearest: FixedHammingHeap<T::Distances, u32>,
+#[derive(Clone, Debug, Default)]
+pub struct Searcher {
+    candidates: Candidates,
+    nearest: FixedCandidates,
     seen: HashSet<u32, std::hash::BuildHasherDefault<FxHasher>>,
 }
 
-impl<T: DiscreteDistance> DiscreteSearcher<T> {
+impl Searcher {
     pub fn new() -> Self {
         Default::default()
     }
@@ -82,17 +79,7 @@ impl<T: DiscreteDistance> DiscreteSearcher<T> {
     }
 }
 
-impl<T: DiscreteDistance> Default for DiscreteSearcher<T> {
-    fn default() -> Self {
-        Self {
-            candidates: HammingHeap::default(),
-            nearest: FixedHammingHeap::default(),
-            seen: HashSet::default(),
-        }
-    }
-}
-
-impl<T: DiscreteDistance, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> DiscreteHNSW<T, M, M0, R>
+impl<T, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> HNSW<T, M, M0, R>
 where
     R: RngCore + SeedableRng,
 {
@@ -110,9 +97,10 @@ where
     }
 }
 
-impl<T: DiscreteDistance, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> DiscreteHNSW<T, M, M0, R>
+impl<T, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> HNSW<T, M, M0, R>
 where
     R: RngCore,
+    T: FloatingDistance,
 {
     /// Creates a HNSW with the passed `prng`.
     pub fn new_prng(prng: R) -> Self {
@@ -137,7 +125,7 @@ where
     }
 
     /// Inserts a feature into the HNSW.
-    pub fn insert(&mut self, q: T, searcher: &mut DiscreteSearcher<T>) -> u32 {
+    pub fn insert(&mut self, q: T, searcher: &mut Searcher) -> u32 {
         // Get the level of this feature.
         let level = self.random_level();
 
@@ -230,7 +218,7 @@ where
         &self,
         q: &T,
         ef: usize,
-        searcher: &mut DiscreteSearcher<T>,
+        searcher: &mut Searcher,
         dest: &'a mut [u32],
     ) -> &'a mut [u32] {
         // If there is nothing in here, then just return nothing.
@@ -264,7 +252,7 @@ where
 
     /// Greedily finds the approximate nearest neighbors to `q` in a non-zero layer.
     /// This corresponds to Algorithm 2 in the paper.
-    fn search_layer(&self, q: &T, searcher: &mut DiscreteSearcher<T>, layer: &[Node<M>]) {
+    fn search_layer(&self, q: &T, searcher: &mut Searcher, layer: &[Node<M>]) {
         while let Some((_, node)) = searcher.candidates.pop() {
             for neighbor in layer[node as usize].neighbors() {
                 let neighbor_node = &layer[neighbor as usize];
@@ -274,7 +262,7 @@ where
                 if searcher.seen.insert(neighbor_node.zero_node) {
                     // Compute the distance of this neighbor.
                     let distance =
-                        T::discrete_distance(q, &self.features[neighbor_node.zero_node as usize]);
+                        T::floating_distance(q, &self.features[neighbor_node.zero_node as usize]);
                     // Attempt to insert into nearest queue.
                     if searcher.nearest.push(distance, neighbor) {
                         // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
@@ -286,7 +274,7 @@ where
     }
 
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
-    fn search_zero_layer(&self, q: &T, searcher: &mut DiscreteSearcher<T>) {
+    fn search_zero_layer(&self, q: &T, searcher: &mut Searcher) {
         while let Some((_, node)) = searcher.candidates.pop() {
             for neighbor in self.zero[node as usize].neighbors() {
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
@@ -294,7 +282,7 @@ where
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
                 if searcher.seen.insert(neighbor) {
                     // Compute the distance of this neighbor.
-                    let distance = T::discrete_distance(q, &self.features[neighbor as usize]);
+                    let distance = T::floating_distance(q, &self.features[neighbor as usize]);
                     // Attempt to insert into nearest queue.
                     if searcher.nearest.push(distance, neighbor) {
                         // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
@@ -308,32 +296,31 @@ where
     /// Ready a search for the next level down.
     ///
     /// `m` is the maximum number of nearest neighbors to consider during the search.
-    fn lower_search(&self, layer: &[Node<M>], searcher: &mut DiscreteSearcher<T>, m: usize) {
+    fn lower_search(&self, layer: &[Node<M>], searcher: &mut Searcher, m: usize) {
         // Clear the candidates so we can fill them with the best nodes in the last layer.
         searcher.candidates.clear();
-        // Only preserve some of the candidates. The original paper's algorithm uses `1` every time,
-        // but for benchmarking purposes we will use a constant. See Algorithm 5 line 5 of the paper.
-        // The paper makes no further comment on why `1` was chosen.
-        searcher.nearest.set_len(1);
-        // Look through all the nearest neighbors from the last layer.
-        if let Some((distance, node)) = searcher.nearest.iter_mut().next() {
-            // Update the node to the next layer.
-            *node = layer[*node as usize].next_node;
-            // Insert the indices of those nearest neighbors into the candidates for the next layer.
-            searcher.candidates.push(distance, *node);
-        }
+        // Only preserve the best candidate. The original paper's algorithm uses `1` every time.
+        // See Algorithm 5 line 5 of the paper. The paper makes no further comment on why `1` was chosen.
+        let (distance, node) = searcher.nearest.pop().unwrap();
+        searcher.nearest.clear();
         // Set the capacity on the nearest to `m`.
-        searcher.nearest.set_capacity(m);
+        searcher.nearest.set_cap(m);
+        // Update the node to the next layer.
+        let new_node = layer[node as usize].next_node;
+        // Insert the index of the nearest neighbor into the nearest pool for the next layer.
+        searcher.nearest.push(distance, new_node);
+        // Insert the index into the candidate pool as well.
+        searcher.candidates.push(distance, new_node);
     }
 
     /// Resets a searcher, but does not set the `cap` on the nearest neighbors.
     /// Must be passed the query element `q`.
-    fn initialize_searcher(&self, q: &T, searcher: &mut DiscreteSearcher<T>, cap: usize) {
+    fn initialize_searcher(&self, q: &T, searcher: &mut Searcher, cap: usize) {
         // Clear the searcher.
         searcher.clear();
-        searcher.nearest.set_capacity(cap);
+        searcher.nearest.set_cap(cap);
         // Add the entry point.
-        let entry_distance = T::discrete_distance(q, self.entry_feature());
+        let entry_distance = T::floating_distance(q, self.entry_feature());
         searcher.candidates.push(entry_distance, 0);
         searcher.nearest.push(entry_distance, 0);
         searcher.seen.insert(
@@ -362,7 +349,7 @@ where
 
     /// Creates a new node at a layer given its nearest neighbors in that layer.
     /// This contains Algorithm 3 from the paper, but also includes some additional logic.
-    fn create_node(&mut self, q: &T, nearest: &FixedHammingHeap<T::Distances, u32>, layer: usize) {
+    fn create_node(&mut self, q: &T, nearest: &FixedCandidates, layer: usize) {
         if layer == 0 {
             let new_index = self.zero.len();
             let mut neighbors: GenericArray<u32, M0> = std::iter::repeat(!0).collect();
@@ -416,12 +403,10 @@ where
             .map(|(ix, &n)| {
                 // Compute the distance to be higher than possible if the neighbor is not filled yet so its always filled.
                 let distance = if n == !0 {
-                    // NOTE: This is the highest number that can be correctly negated.
-                    // This is necessary due to the way that max_by_key doesn't work as per below.
-                    !0 >> 1
+                    std::f32::MAX
                 } else {
                     // Compute the distance. The feature is looked up differently for the zero layer.
-                    T::discrete_distance(
+                    T::floating_distance(
                         target_feature,
                         &self.features[if layer == 0 {
                             n as usize
@@ -438,7 +423,7 @@ where
 
         // If this is better than the worst, insert it in the worst's place.
         // This is also different for the zero layer.
-        if T::discrete_distance(q, target_feature) < worst_distance {
+        if T::floating_distance(q, target_feature) < worst_distance {
             if layer == 0 {
                 self.zero[target_ix as usize].neighbors[worst_ix] = node_ix;
             } else {
@@ -448,8 +433,7 @@ where
     }
 }
 
-impl<T: DiscreteDistance, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> Default
-    for DiscreteHNSW<T, M, M0, R>
+impl<T, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> Default for HNSW<T, M, M0, R>
 where
     R: SeedableRng,
 {

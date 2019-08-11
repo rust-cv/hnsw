@@ -1,9 +1,17 @@
+mod candidates;
 mod discrete_distance;
 mod discrete_hnsw;
+mod hnsw;
+pub use self::hnsw::*;
+pub(crate) use candidates::*;
 pub use discrete_distance::*;
 pub use discrete_hnsw::*;
 
 pub use generic_array::{typenum, ArrayLength, GenericArray};
+
+pub trait FloatingDistance {
+    fn floating_distance(lhs: &Self, rhs: &Self) -> f32;
+}
 
 #[derive(Copy, Clone, Debug)]
 pub struct Params {

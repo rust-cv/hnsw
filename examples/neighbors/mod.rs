@@ -35,7 +35,7 @@ fn bench_neighbors(c: &mut Criterion) {
         eprintln!("Generating HNSW size {}...", total);
         let range = 0..total;
         let mut hnsw: DiscreteHNSW<Hamming<u128>> = DiscreteHNSW::new();
-        let mut searcher = Searcher::default();
+        let mut searcher = DiscreteSearcher::default();
         for i in range.clone() {
             hnsw.insert(Hamming(all_input[i]), &mut searcher);
         }
@@ -63,7 +63,7 @@ fn bench_neighbors(c: &mut Criterion) {
                 move |bencher: &mut Bencher, total: &usize| {
                     let (hnsw, inliers) = &hnsw_map[total];
                     let mut cycle_range = inliers.iter().cloned().cycle();
-                    let mut searcher = Searcher::default();
+                    let mut searcher = DiscreteSearcher::default();
                     bencher.iter(|| {
                         let feature = cycle_range.next().unwrap();
                         let mut neighbors = [0; 1];

@@ -2,9 +2,9 @@
 
 use hnsw::*;
 
-fn test_hnsw() -> (HNSW<Hamming<u128>>, Searcher) {
-    let mut searcher = Searcher::default();
-    let mut hnsw = HNSW::new();
+fn test_hnsw_discrete() -> (DiscreteHNSW<Hamming<u128>>, DiscreteSearcher<Hamming<u128>>) {
+    let mut searcher = DiscreteSearcher::default();
+    let mut hnsw = DiscreteHNSW::new();
 
     let features = [
         0b0001, 0b0010, 0b0100, 0b1000, 0b0011, 0b0110, 0b1100, 0b1001,
@@ -18,13 +18,13 @@ fn test_hnsw() -> (HNSW<Hamming<u128>>, Searcher) {
 }
 
 #[test]
-fn insertion() {
-    test_hnsw();
+fn insertion_discrete() {
+    test_hnsw_discrete();
 }
 
 #[test]
-fn nearest_neighbor() {
-    let (hnsw, mut searcher) = test_hnsw();
+fn nearest_neighbor_discrete() {
+    let (hnsw, mut searcher) = test_hnsw_discrete();
     let searcher = &mut searcher;
     let mut neighbors = [!0; 8];
 

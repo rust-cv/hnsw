@@ -1,10 +1,17 @@
 use generic_array::ArrayLength;
 pub use packed_simd::{u128x2, u128x4};
+use crate::FloatingDistance;
 
 pub trait DiscreteDistance {
     type Distances: ArrayLength<Vec<u32>>;
 
     fn discrete_distance(lhs: &Self, rhs: &Self) -> u32;
+}
+
+impl<T> FloatingDistance for T where T: DiscreteDistance {
+    fn floating_distance(lhs: &Self, rhs: &Self) -> f32 {
+        Self::discrete_distance(lhs, rhs) as f32
+    }
 }
 
 /// Treats each bit contained in this struct as its own dimension.
