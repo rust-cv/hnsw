@@ -180,8 +180,7 @@ where
             self.lower_search(
                 &self.layers[ix],
                 searcher,
-                if ix == level { self.params.ef_construction } else { 1 },
-                self.params.num_preserved_construction,
+                if ix == level { self.params.ef_construction } else { 1 }
             );
         }
 
@@ -196,7 +195,6 @@ where
                 &self.layers[ix],
                 searcher,
                 self.params.ef_construction,
-                self.params.num_preserved_construction,
             );
         }
 
@@ -248,7 +246,6 @@ where
                 layer,
                 searcher,
                 if ix == 0 { ef } else { 1 },
-                self.params.num_preserved,
             );
         }
 
@@ -320,14 +317,13 @@ where
         layer: &[Node<M>],
         searcher: &mut Searcher<T>,
         m: usize,
-        preserve: usize,
     ) {
         // Clear the candidates so we can fill them with the best nodes in the last layer.
         searcher.candidates.clear();
         // Only preserve some of the candidates. The original paper's algorithm uses `1` every time,
         // but for benchmarking purposes we will use a constant. See Algorithm 5 line 5 of the paper.
         // The paper makes no further comment on why `1` was chosen.
-        searcher.nearest.set_len(preserve);
+        searcher.nearest.set_len(1);
         // Look through all the nearest neighbors from the last layer.
         for (distance, node) in searcher.nearest.iter_mut() {
             // Update the node to the next layer.
