@@ -2,8 +2,6 @@ use byteorder::{ByteOrder, LittleEndian};
 use generic_array::{typenum, ArrayLength};
 use gnuplot::*;
 use hnsw::*;
-use itertools::Itertools;
-use packed_simd::{u128x2, u128x4};
 use rand::distributions::Standard;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
