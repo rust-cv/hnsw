@@ -44,3 +44,18 @@ impl Default for Params {
         }
     }
 }
+
+/// Any list, vector, etc of floats wrapped in `Euclidean` is to be treated as having euclidean distance.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Euclidean<T>(pub T);
+
+impl FloatingDistance for Euclidean<&[f32]> {
+    fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
+        assert_eq!(lhs.len(), rhs.len());
+        lhs.iter()
+            .zip(rhs)
+            .map(|(a, b)| (a - b).powi(2))
+            .sum::<f32>()
+            .sqrt()
+    }
+}

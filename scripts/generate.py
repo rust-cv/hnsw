@@ -45,6 +45,6 @@ if __name__ == '__main__':
                 sys.stdout.buffer.write(descriptor)
             else:
                 sys.stdout.buffer.write(bytes(itertools.chain.from_iterable(
-                    map(lambda f: struct.pack('f', f), descriptor))))
+                    map(lambda f: struct.pack('<f', f), descriptor))))
         BAR.next()
     BAR.finish()
