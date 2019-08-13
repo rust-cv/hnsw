@@ -1,90 +1,114 @@
+use byteorder::{ByteOrder, NativeEndian};
 use criterion::*;
+use hamming_heap::FixedHammingHeap;
 use hnsw::*;
-use rand::distributions::{Bernoulli, Standard};
-use rand::seq::SliceRandom;
-use rand::{Rng, SeedableRng};
-use rand_pcg::Pcg64;
+use packed_simd::u128x2;
 use std::collections::HashMap;
+use std::io::Read;
 use std::iter::FromIterator;
 use std::rc::Rc;
 
-/// This is the probability each bit of an inlier will be different.
-/// This comes from "Online Nearest Neighbor Search in Hamming Space"
-/// in figure 2a, where 1-NN has an average search radius of 11 for
-/// 128-bit features. I make the assumption here that the inliers
-/// exist on a binomial distribution over 128 choices centered at
-/// 11, which is consistent with the inlier statistics found in the paper
-/// "ORB: an efficient alternative to SIFT or SURF".
-const BIT_DIFF_PROBABILITY_OF_INLIER: f64 = 0.0859;
+fn make_u128x2(bytes: &[u8]) -> Hamming<u128x2> {
+    Hamming(
+        [
+            NativeEndian::read_u128(&bytes[0..16]),
+            NativeEndian::read_u128(&bytes[16..32]),
+        ]
+        .into(),
+    )
+}
 
 fn bench_neighbors(c: &mut Criterion) {
-    let space_mags = 0..=22;
+    let space_mags = 0..=19;
     let all_sizes = (space_mags).map(|n| 2usize.pow(n));
-    let rng = Pcg64::from_seed([5; 32]);
-    // Get the bigest input size and then generate all inputs from that.
-    eprintln!("Generating random inputs...");
-    let all_input = rng
-        .sample_iter(&Standard)
-        .take(all_sizes.clone().rev().next().unwrap())
-        .collect::<Vec<u128>>();
-    let mut rng = Pcg64::from_seed([6; 32]);
+    let filepath = "data/akaze";
+    let total_descriptors = all_sizes.clone().rev().next().unwrap();
+    let descriptor_size_bytes = 61;
+    let total_query_strings = 10000;
+
+    // Read in search space.
+    eprintln!(
+        "Reading {} search space descriptors of size {} bytes from file \"{}\"...",
+        total_descriptors, descriptor_size_bytes, filepath
+    );
+    let mut file = std::fs::File::open(filepath).expect("unable to open file");
+    let mut v = vec![0u8; total_descriptors * descriptor_size_bytes];
+    file.read_exact(&mut v).expect(
+        "unable to read enough search descriptors from the file; add more descriptors to file",
+    );
+    let search_space: Vec<Hamming<u128x2>> = v
+        .chunks_exact(descriptor_size_bytes)
+        .map(make_u128x2)
+        .collect();
     eprintln!("Done.");
+
+    // Read in query strings.
+    eprintln!(
+        "Reading {} query descriptors of size {} bytes from file \"{}\"...",
+        total_query_strings, descriptor_size_bytes, filepath
+    );
+    let mut v = vec![0u8; total_query_strings * descriptor_size_bytes];
+    file.read_exact(&mut v).expect(
+        "unable to read enough search descriptors from the file; add more descriptors to file",
+    );
+    let query_strings: Rc<Vec<Hamming<u128x2>>> = Rc::new(
+        v.chunks_exact(descriptor_size_bytes)
+            .map(make_u128x2)
+            .collect(),
+    );
+    eprintln!("Done.");
+
     eprintln!("Generating HNSWs...");
-    let bernoulli = Bernoulli::new(BIT_DIFF_PROBABILITY_OF_INLIER).unwrap();
     let hnsw_map = Rc::new(HashMap::<_, _>::from_iter(all_sizes.clone().map(|total| {
         eprintln!("Generating HNSW size {}...", total);
         let range = 0..total;
-        let mut hnsw: DiscreteHNSW<Hamming<u128>> = DiscreteHNSW::new();
+        let mut hnsw: DiscreteHNSW<Hamming<u128x2>> = DiscreteHNSW::new();
         let mut searcher = DiscreteSearcher::default();
         for i in range.clone() {
-            hnsw.insert(Hamming(all_input[i]), &mut searcher);
+            hnsw.insert(search_space[i], &mut searcher);
         }
-        // In the paper they choose 1000 samples that arent in the data set.
-        let inliers: Vec<u128> = all_input[0..total]
-            .choose_multiple(&mut rng, 1000)
-            .map(|&feature| {
-                let mut feature = feature;
-                for bit in 0..128 {
-                    let choice: bool = rng.sample(&bernoulli);
-                    feature ^= (choice as u128) << bit;
-                }
-                feature
-            })
-            .collect();
-        (total, (hnsw, inliers))
+        (total, hnsw)
     })));
     eprintln!("Done.");
     c.bench(
         "neighbors",
         ParameterizedBenchmark::new(
-            "nearest_1_hnsw",
+            "2_nn_hnsw",
             {
                 let hnsw_map = hnsw_map.clone();
+                let query_strings = query_strings.clone();
                 move |bencher: &mut Bencher, total: &usize| {
-                    let (hnsw, inliers) = &hnsw_map[total];
-                    let mut cycle_range = inliers.iter().cloned().cycle();
+                    let hnsw = &hnsw_map[total];
+                    let mut cycle_range = query_strings.iter().cloned().cycle();
                     let mut searcher = DiscreteSearcher::default();
                     bencher.iter(|| {
                         let feature = cycle_range.next().unwrap();
-                        let mut neighbors = [0; 1];
-                        hnsw.nearest(&Hamming(feature), 24, &mut searcher, &mut neighbors)
+                        let mut neighbors = [0; 2];
+                        hnsw.nearest(&feature, 24, &mut searcher, &mut neighbors)
                             .len()
                     });
                 }
             },
             all_sizes,
         )
-        .with_function("nearest_1_linear", {
-            let hnsw_map = hnsw_map.clone();
+        .with_function("2_nn_linear", {
             move |bencher: &mut Bencher, &total: &usize| {
-                let (_, inliers) = &hnsw_map[&total];
-                let mut cycle_range = inliers.iter().cloned().cycle();
+                let mut cycle_range = query_strings.iter().cloned().cycle();
+                let mut nearest = FixedHammingHeap::<
+                    <Hamming<u128x2> as DiscreteDistance>::Distances,
+                    u32,
+                >::default();
                 bencher.iter(|| {
-                    let feature = cycle_range.next().unwrap();
-                    all_input[0..total]
-                        .iter()
-                        .cloned()
-                        .min_by_key(|n| (feature ^ n).count_ones())
+                    nearest.set_capacity(2);
+                    nearest.clear();
+                    let search_feature = cycle_range.next().unwrap();
+                    for (ix, feature) in search_space[0..total].iter().enumerate() {
+                        nearest.push(
+                            DiscreteDistance::discrete_distance(&search_feature, feature),
+                            ix as u32,
+                        );
+                    }
+                    nearest.len()
                 });
             }
         })
