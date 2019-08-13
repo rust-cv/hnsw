@@ -56,6 +56,5 @@ impl FloatingDistance for Euclidean<&[f32]> {
             .zip(rhs)
             .map(|(a, b)| (a - b).powi(2))
             .sum::<f32>()
-            .sqrt()
     }
 }
