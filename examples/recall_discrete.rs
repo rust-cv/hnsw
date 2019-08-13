@@ -66,6 +66,9 @@ struct Opt {
 	///
 	#[structopt(short = "d", long = "descriptor_stride", default_value = "61")]
 	descriptor_stride: usize,
+    /// efConstruction controlls the quality of the graph at build-time.
+    #[structopt(short = "c", long = "ef_construction", default_value = "400")]
+    ef_construction: usize,
 }
 
 fn process<T: DiscreteDistance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
@@ -163,7 +166,7 @@ fn process<T: DiscreteDistance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32
 	eprintln!("Done.");
 
 	eprintln!("Generating HNSW...");
-	let mut hnsw: DiscreteHNSW<T, M, M0> = DiscreteHNSW::new();
+	let mut hnsw: DiscreteHNSW<T, M, M0> = DiscreteHNSW::new_params(Params::new().ef_construction(opt.ef_construction));
 	let mut searcher: DiscreteSearcher<T> = DiscreteSearcher::default();
 	for feature in &search_space {
 		hnsw.insert(feature.clone(), &mut searcher);

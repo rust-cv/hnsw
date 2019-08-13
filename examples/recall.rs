@@ -61,6 +61,9 @@ struct Opt {
     /// SIFT: 128
     #[structopt(short = "d", long = "descriptor_stride", default_value = "64")]
     descriptor_stride: usize,
+    /// efConstruction controlls the quality of the graph at build-time.
+    #[structopt(short = "c", long = "ef_construction", default_value = "400")]
+    ef_construction: usize,
 }
 
 fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
@@ -170,7 +173,8 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
     eprintln!("Done.");
 
     eprintln!("Generating HNSW...");
-    let mut hnsw: HNSW<_, M, M0> = HNSW::new();
+    let mut hnsw: HNSW<_, M, M0> =
+        HNSW::new_params(Params::new().ef_construction(opt.ef_construction));
     let mut searcher: Searcher = Searcher::default();
     for feature in &search_space {
         hnsw.insert(feature.clone(), &mut searcher);
