@@ -8,6 +8,7 @@ keywords = ["hamming", "distance", "nearest", "neighbor", "search"]
 categories = ["algorithms", "data-structures", "science::robotics"]
 repository = "https://github.com/rust-photogrammetry/hnsw"
 documentation = "https://docs.rs/hnsw/"
+license = "MIT"
 readme = "README.md"
 
 [dependencies]
