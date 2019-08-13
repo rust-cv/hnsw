@@ -6,8 +6,8 @@ edition = "2018"
 description = "Fast approximate nearest neighbors in hamming space"
 keywords = ["hamming", "distance", "nearest", "neighbor", "search"]
 categories = ["algorithms", "data-structures", "science::robotics"]
-repository = "https://github.com/rust-photogrammetry/hamming-heap"
-documentation = "https://docs.rs/hamming-heap/"
+repository = "https://github.com/rust-photogrammetry/hnsw"
+documentation = "https://docs.rs/hnsw/"
 readme = "README.md"
 
 [dependencies]
