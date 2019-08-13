@@ -1,5 +1,18 @@
 # hsnw
 
+
+[![Crates.io][ci]][cl] ![MIT/Apache][li] [![docs.rs][di]][dl] ![LoC][lo]
+
+[ci]: https://img.shields.io/crates/v/hnsw.svg
+[cl]: https://crates.io/crates/hnsw/
+
+[li]: https://img.shields.io/crates/l/specs.svg?maxAge=2592000
+
+[di]: https://docs.rs/hnsw/badge.svg
+[dl]: https://docs.rs/hnsw/
+
+[lo]: https://tokei.rs/b1/github/rust-photogrammetry/hnsw?category=code
+
 Hierarchical Navigable Small World Graph for fast ANN search
 
 ## Benchmarks
