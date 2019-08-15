@@ -1,6 +1,6 @@
 #[derive(Clone, Debug, Default)]
 pub struct Candidates {
-    candidates: Vec<(f32, u32)>,
+    candidates: Vec<(u32, u32)>,
 }
 
 impl Candidates {
@@ -10,27 +10,23 @@ impl Candidates {
     }
 
     /// Pushes a new node to the candidate list.
-    pub fn push(&mut self, distance: f32, node: u32) {
-        let unsigned_distance: u32 = unsafe { std::mem::transmute(distance) };
+    pub fn push(&mut self, distance: u32, node: u32) {
         let pos = self
             .candidates
-            .binary_search_by(|&(d, _)| {
-                let unsigned_d: u32 = unsafe { std::mem::transmute(d) };
-                unsigned_distance.cmp(&unsigned_d)
-            })
+            .binary_search_by_key(&distance, |&(d, _)| d)
             .unwrap_or_else(|e| e);
         self.candidates.insert(pos, (distance, node));
     }
 
     /// Pop an item from the candidate list.
-    pub fn pop(&mut self) -> Option<(f32, u32)> {
+    pub fn pop(&mut self) -> Option<(u32, u32)> {
         self.candidates.pop()
     }
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct FixedCandidates {
-    candidates: Vec<(f32, u32)>,
+    candidates: Vec<(u32, u32)>,
     cap: usize,
 }
 
@@ -46,26 +42,24 @@ impl FixedCandidates {
         self.candidates.len()
     }
 
+    /// Checks if any candidates are present.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Pushes a new node to the candidate list.
-    pub fn push(&mut self, distance: f32, node: u32) -> bool {
-        let unsigned_distance: u32 = unsafe { std::mem::transmute(distance) };
+    pub fn push(&mut self, distance: u32, node: u32) -> bool {
         let better = self
             .candidates
             .last()
-            .map(|&(df, _)| {
-                let last_distance: u32 = unsafe { std::mem::transmute(df) };
-                unsigned_distance < last_distance
-            })
+            .map(|&(df, _)| distance < df)
             .unwrap_or(self.cap != 0);
         let full = self.len() == self.cap;
         let will_add = better | !full;
         if will_add {
             let pos = self
                 .candidates
-                .binary_search_by(|&(d, _)| {
-                    let unsigned_d: u32 = unsafe { std::mem::transmute(d) };
-                    unsigned_d.cmp(&unsigned_distance)
-                })
+                .binary_search_by(|&(d, _)| d.cmp(&distance))
                 .unwrap_or_else(|e| e);
             self.candidates.insert(pos, (distance, node));
             if full {
@@ -77,7 +71,7 @@ impl FixedCandidates {
     }
 
     /// Pop the worst item from the candidate list.
-    pub fn pop(&mut self) -> Option<(f32, u32)> {
+    pub fn pop(&mut self) -> Option<(u32, u32)> {
         self.candidates.pop()
     }
 
@@ -112,22 +106,19 @@ impl FixedCandidates {
 fn test_candidates() {
     let mut candidates = FixedCandidates::default();
     candidates.set_cap(3);
-    assert!(candidates.push(1.0, 0));
-    assert!(candidates.push(0.5, 1));
-    assert!(candidates.push(0.000_000_01, 2));
-    assert!(!candidates.push(1.1, 3));
-    assert!(!candidates.push(2.0, 4));
-    assert!(candidates.push(0.000_000_000_1, 5));
-    assert!(!candidates.push(1_000_000.0, 6));
-    assert!(!candidates.push(0.6, 7));
-    assert!(!candidates.push(0.5, 8));
-    assert_eq!(
-        &candidates.candidates,
-        &[(0.000_000_000_1, 5), (0.000_000_01, 2), (0.5, 1)]
-    );
-    assert!(candidates.push(0.000_000_01, 9));
-    assert!(!candidates.push(0.000_000_01, 10));
+    assert!(candidates.push(1.0f32.to_bits(), 0));
+    assert!(candidates.push(0.5f32.to_bits(), 1));
+    assert!(candidates.push(0.000_000_01f32.to_bits(), 2));
+    assert!(!candidates.push(1.1f32.to_bits(), 3));
+    assert!(!candidates.push(2.0f32.to_bits(), 4));
+    assert!(candidates.push(0.000_000_000_1f32.to_bits(), 5));
+    assert!(!candidates.push(1_000_000.0f32.to_bits(), 6));
+    assert!(!candidates.push(0.6f32.to_bits(), 7));
+    assert!(!candidates.push(0.5f32.to_bits(), 8));
+    assert!(candidates.push(0.000_000_01f32.to_bits(), 9));
+    assert!(!candidates.push(0.000_000_01f32.to_bits(), 10));
     let mut arr = [0; 3];
     candidates.fill_slice(&mut arr);
-    assert!(arr == [5, 9, 2] || arr == [9, 5, 2]);
+    arr[0..2].sort_unstable();
+    assert_eq!(arr, [5, 9, 2]);
 }

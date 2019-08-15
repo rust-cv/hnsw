@@ -100,7 +100,7 @@ where
 impl<T, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> HNSW<T, M, M0, R>
 where
     R: RngCore,
-    T: FloatingDistance,
+    T: Distance,
 {
     /// Creates a HNSW with the passed `prng`.
     pub fn new_prng(prng: R) -> Self {
@@ -261,8 +261,7 @@ where
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
                 if searcher.seen.insert(neighbor_node.zero_node) {
                     // Compute the distance of this neighbor.
-                    let distance =
-                        T::floating_distance(q, &self.features[neighbor_node.zero_node as usize]);
+                    let distance = T::distance(q, &self.features[neighbor_node.zero_node as usize]);
                     // Attempt to insert into nearest queue.
                     if searcher.nearest.push(distance, neighbor) {
                         // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
@@ -282,7 +281,7 @@ where
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
                 if searcher.seen.insert(neighbor) {
                     // Compute the distance of this neighbor.
-                    let distance = T::floating_distance(q, &self.features[neighbor as usize]);
+                    let distance = T::distance(q, &self.features[neighbor as usize]);
                     // Attempt to insert into nearest queue.
                     if searcher.nearest.push(distance, neighbor) {
                         // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
@@ -320,7 +319,7 @@ where
         searcher.clear();
         searcher.nearest.set_cap(cap);
         // Add the entry point.
-        let entry_distance = T::floating_distance(q, self.entry_feature());
+        let entry_distance = T::distance(q, self.entry_feature());
         searcher.candidates.push(entry_distance, 0);
         searcher.nearest.push(entry_distance, 0);
         searcher.seen.insert(
@@ -403,10 +402,10 @@ where
             .map(|(ix, &n)| {
                 // Compute the distance to be higher than possible if the neighbor is not filled yet so its always filled.
                 let distance = if n == !0 {
-                    std::f32::MAX
+                    std::u32::MAX
                 } else {
                     // Compute the distance. The feature is looked up differently for the zero layer.
-                    T::floating_distance(
+                    T::distance(
                         target_feature,
                         &self.features[if layer == 0 {
                             n as usize
@@ -418,16 +417,12 @@ where
                 (ix, distance)
             })
             // This was done instead of max_by_key because min_by_key takes the first equally bad element.
-            .min_by_key(|&(_, distance)| {
-                let cast_distance: u32 = unsafe { std::mem::transmute(distance) };
-                // This inverts the order for the min_by_key.
-                !cast_distance
-            })
+            .min_by_key(|&(_, distance)| !distance)
             .unwrap();
 
         // If this is better than the worst, insert it in the worst's place.
         // This is also different for the zero layer.
-        if T::floating_distance(q, target_feature) < worst_distance {
+        if T::distance(q, target_feature) < worst_distance {
             if layer == 0 {
                 self.zero[target_ix as usize].neighbors[worst_ix] = node_ix;
             } else {

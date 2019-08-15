@@ -71,7 +71,7 @@ struct Opt {
     ef_construction: usize,
 }
 
-fn process<T: DiscreteDistance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
+fn process<T: Distance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
 	opt: &Opt,
 	conv: fn(&[u8]) -> T,
 ) -> (Vec<f64>, Vec<f64>) {
@@ -151,7 +151,7 @@ fn process<T: DiscreteDistance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32
 			let mut v = vec![];
 			for distance in search_space
 				.iter()
-				.map(|n| T::discrete_distance(n, &feature))
+				.map(|n| T::distance(n, &feature))
 			{
 				let pos = v.binary_search(&distance).unwrap_or_else(|e| e);
 				v.insert(pos, distance);
@@ -166,8 +166,8 @@ fn process<T: DiscreteDistance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32
 	eprintln!("Done.");
 
 	eprintln!("Generating HNSW...");
-	let mut hnsw: DiscreteHNSW<T, M, M0> = DiscreteHNSW::new_params(Params::new().ef_construction(opt.ef_construction));
-	let mut searcher: DiscreteSearcher<T> = DiscreteSearcher::default();
+	let mut hnsw: HNSW<T, M, M0> = HNSW::new_params(Params::new().ef_construction(opt.ef_construction));
+	let mut searcher: Searcher = Searcher::default();
 	for feature in &search_space {
 		hnsw.insert(feature.clone(), &mut searcher);
 	}
@@ -188,7 +188,7 @@ fn process<T: DiscreteDistance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32
 				// Go through all the features.
 				for &mut feature_ix in hnsw.nearest(&query_feature, ef, searcher, &mut dest) {
 					// Any feature that is less than or equal to the worst real nearest neighbor distance is correct.
-					if T::discrete_distance(&search_space[feature_ix as usize], &query_feature)
+					if T::distance(&search_space[feature_ix as usize], &query_feature)
 						<= correct_worst_distance
 					{
 						*correct.borrow_mut() += 1;

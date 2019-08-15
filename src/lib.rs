@@ -1,17 +1,11 @@
-mod candidates;
-mod discrete_distance;
-mod discrete_hnsw;
+pub mod candidates;
+mod distance;
 mod hnsw;
 pub use self::hnsw::*;
-pub(crate) use candidates::*;
-pub use discrete_distance::*;
-pub use discrete_hnsw::*;
+pub use candidates::*;
+pub use distance::*;
 
 pub use generic_array::{typenum, ArrayLength, GenericArray};
-
-pub trait FloatingDistance {
-    fn floating_distance(lhs: &Self, rhs: &Self) -> f32;
-}
 
 #[derive(Copy, Clone, Debug)]
 pub struct Params {
@@ -42,19 +36,5 @@ impl Default for Params {
         Self {
             ef_construction: 400,
         }
-    }
-}
-
-/// Any list, vector, etc of floats wrapped in `Euclidean` is to be treated as having euclidean distance.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Euclidean<T>(pub T);
-
-impl FloatingDistance for Euclidean<&[f32]> {
-    fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
-        assert_eq!(lhs.len(), rhs.len());
-        lhs.iter()
-            .zip(rhs)
-            .map(|(a, b)| (a - b).powi(2))
-            .sum::<f32>()
     }
 }
