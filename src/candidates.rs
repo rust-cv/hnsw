@@ -1,4 +1,8 @@
+#[cfg(feature = "serde-impl")]
+use serde::{Serialize, Deserialize};
+
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 pub struct Candidates {
     candidates: Vec<(u32, u32)>,
 }
@@ -25,6 +29,7 @@ impl Candidates {
 }
 
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 pub struct FixedCandidates {
     candidates: Vec<(u32, u32)>,
     cap: usize,

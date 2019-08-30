@@ -7,7 +7,11 @@ pub use distance::*;
 
 pub use generic_array::{typenum, ArrayLength, GenericArray};
 
+#[cfg(feature = "serde-impl")]
+use serde::{Serialize, Deserialize};
+
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 pub struct Params {
     ef_construction: usize,
 }

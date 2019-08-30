@@ -11,6 +11,10 @@ documentation = "https://docs.rs/hnsw/"
 license = "MIT"
 readme = "README.md"
 
+[features]
+default = ["serde-impl"]
+serde-impl = ["generic-array/serde", "serde"]
+
 [dependencies]
 rand_core = "0.5.0"
 rand_pcg = "0.2.0"
@@ -20,6 +24,7 @@ generic-array = "0.13.2"
 typenum = "1.10.0"
 packed_simd = "0.3.3"
 float-ord = "0.2.0"
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 [dev-dependencies]
 hamming-heap = "0.4.1"

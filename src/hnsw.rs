@@ -3,12 +3,15 @@ use crate::*;
 use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64;
 use rustc_hash::FxHasher;
+#[cfg(feature = "serde-impl")]
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 /// This provides a HNSW implementation for any distance function.
 ///
 /// The type `T` must implement `FloatingDistance` to get implementations.
 #[derive(Clone)]
+#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 pub struct HNSW<
     T,
     M: ArrayLength<u32> = typenum::U12,
@@ -31,6 +34,7 @@ pub struct HNSW<
 
 /// A node in the zero layer
 #[derive(Clone)]
+#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 struct ZeroNode<N: ArrayLength<u32>> {
     /// The neighbors of this node.
     neighbors: GenericArray<u32, N>,
@@ -44,6 +48,7 @@ impl<N: ArrayLength<u32>> ZeroNode<N> {
 
 /// A node in any other layer other than the zero layer
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 struct Node<N: ArrayLength<u32>> {
     /// The node in the zero layer this refers to.
     zero_node: u32,
@@ -61,6 +66,7 @@ impl<N: ArrayLength<u32>> Node<N> {
 
 /// Contains all the state used when searching the HNSW
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 pub struct Searcher {
     candidates: Candidates,
     nearest: FixedCandidates,
