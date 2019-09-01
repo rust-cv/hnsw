@@ -1,17 +1,25 @@
 //! Useful tests for debugging since they are hand-written and easy to see the debugging output.
 
-use hnsw::*;
+use hnsw::{Euclidean, Searcher, HNSW};
+use packed_simd::f32x4;
 
-fn test_hnsw() -> (HNSW<Hamming<u128>>, Searcher) {
+fn test_hnsw() -> (HNSW<Euclidean<f32x4>>, Searcher) {
     let mut searcher = Searcher::default();
     let mut hnsw = HNSW::new();
 
     let features = [
-        0b0001, 0b0010, 0b0100, 0b1000, 0b0011, 0b0110, 0b1100, 0b1001,
+        f32x4::new(0.0, 0.0, 0.0, 1.0),
+        f32x4::new(0.0, 0.0, 1.0, 0.0),
+        f32x4::new(0.0, 1.0, 0.0, 0.0),
+        f32x4::new(1.0, 0.0, 0.0, 0.0),
+        f32x4::new(0.0, 0.0, 1.0, 1.0),
+        f32x4::new(0.0, 1.0, 1.0, 0.0),
+        f32x4::new(1.0, 1.0, 0.0, 0.0),
+        f32x4::new(1.0, 0.0, 0.0, 1.0),
     ];
 
     for &feature in &features {
-        hnsw.insert(Hamming(feature), &mut searcher);
+        hnsw.insert(Euclidean(feature), &mut searcher);
     }
 
     (hnsw, searcher)
@@ -28,7 +36,12 @@ fn nearest_neighbor() {
     let searcher = &mut searcher;
     let mut neighbors = [!0; 8];
 
-    hnsw.nearest(&Hamming(0b0001), 24, searcher, &mut neighbors);
+    hnsw.nearest(
+        &Euclidean(f32x4::new(0.0, 0.0, 0.0, 1.0)),
+        24,
+        searcher,
+        &mut neighbors,
+    );
     // Distance 1
     neighbors[1..3].sort_unstable();
     // Distance 2

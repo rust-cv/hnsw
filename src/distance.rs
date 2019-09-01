@@ -1,4 +1,4 @@
-pub use packed_simd::{u128x2, u128x4};
+pub use packed_simd::{f32x16, f32x2, f32x4, f32x8, u128x2, u128x4};
 
 /// This is the primary trait used by the HNSW. This is also implemented for [`FloatingDistance`].
 /// If your features have a floating point distance, please implement the distance using [`FloatingDistance`].
@@ -18,7 +18,10 @@ pub trait FloatingDistance {
 
 /// This impl requires the float to not be negative, infinite, or NaN.
 /// The tradeoff is that it performs equally as well as unsigned integer distance.
-impl<T> Distance for T where T: FloatingDistance {
+impl<T> Distance for T
+where
+    T: FloatingDistance,
+{
     fn distance(lhs: &Self, rhs: &Self) -> u32 {
         T::floating_distance(lhs, rhs).to_bits()
     }
@@ -80,6 +83,15 @@ impl Distance for Hamming<u128x4> {
     }
 }
 
+impl Distance for Hamming<[u128x4; 1]> {
+    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
+        lhs.iter()
+            .zip(&rhs)
+            .map(|(&lhs, &rhs)| (lhs ^ rhs).count_ones().wrapping_sum() as u32)
+            .sum::<u32>()
+    }
+}
+
 impl Distance for Hamming<[u128x4; 2]> {
     fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
         lhs.iter()
@@ -120,3 +132,74 @@ impl FloatingDistance for Euclidean<&[f32]> {
             .sum::<f32>()
     }
 }
+
+impl FloatingDistance for Euclidean<f32> {
+    fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
+        (lhs - rhs).abs()
+    }
+}
+
+impl FloatingDistance for Euclidean<f32x2> {
+    fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
+        let diff = lhs - rhs;
+        (diff * diff).sum()
+    }
+}
+
+impl FloatingDistance for Euclidean<f32x4> {
+    fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
+        let diff = lhs - rhs;
+        (diff * diff).sum()
+    }
+}
+
+impl FloatingDistance for Euclidean<f32x8> {
+    fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
+        let diff = lhs - rhs;
+        (diff * diff).sum()
+    }
+}
+
+impl FloatingDistance for Euclidean<f32x16> {
+    fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
+        let diff = lhs - rhs;
+        (diff * diff).sum()
+    }
+}
+
+macro_rules! euclidean_array_impl {
+    ($x:expr) => {
+        impl FloatingDistance for Euclidean<[f32x16; $x]> {
+            fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
+                lhs.iter()
+                    .zip(rhs.iter())
+                    .map(|(&a, &b)| {
+                        let diff = a - b;
+                        (diff * diff).sum()
+                    })
+                    .sum::<f32>()
+            }
+        }
+    };
+}
+
+euclidean_array_impl!(1);
+euclidean_array_impl!(2);
+euclidean_array_impl!(3);
+euclidean_array_impl!(4);
+euclidean_array_impl!(5);
+euclidean_array_impl!(6);
+euclidean_array_impl!(7);
+euclidean_array_impl!(8);
+euclidean_array_impl!(9);
+euclidean_array_impl!(10);
+euclidean_array_impl!(11);
+euclidean_array_impl!(12);
+euclidean_array_impl!(13);
+euclidean_array_impl!(14);
+euclidean_array_impl!(15);
+euclidean_array_impl!(16);
+euclidean_array_impl!(32);
+euclidean_array_impl!(64);
+euclidean_array_impl!(128);
+euclidean_array_impl!(256);

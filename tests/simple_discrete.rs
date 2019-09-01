@@ -1,6 +1,6 @@
 //! Useful tests for debugging since they are hand-written and easy to see the debugging output.
 
-use hnsw::*;
+use hnsw::{Hamming, Searcher, HNSW};
 
 fn test_hnsw_discrete() -> (HNSW<Hamming<u128>>, Searcher) {
     let mut searcher = Searcher::default();
@@ -25,10 +25,9 @@ fn insertion_discrete() {
 #[test]
 fn nearest_neighbor_discrete() {
     let (hnsw, mut searcher) = test_hnsw_discrete();
-    let searcher = &mut searcher;
     let mut neighbors = [!0; 8];
 
-    hnsw.nearest(&Hamming(0b0001), 24, searcher, &mut neighbors);
+    hnsw.nearest(&Hamming(0b0001), 24, &mut searcher, &mut neighbors);
     // Distance 1
     neighbors[1..3].sort_unstable();
     // Distance 2
