@@ -248,12 +248,30 @@ where
         &self.features[item as usize]
     }
 
+    pub fn levels(&self) -> usize {
+        self.layers.len() + 1
+    }
+
     pub fn len(&self) -> usize {
         self.zero.len()
     }
 
+    pub fn level_len(&self, level: usize) -> usize {
+        if level == 0 {
+            self.features.len()
+        } else if level >= self.levels() {
+            self.layers[level - 1].len()
+        } else {
+            0
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.zero.is_empty()
+    }
+
+    pub fn level_is_empty(&self, level: usize) -> bool {
+        self.level_len(level) == 0
     }
 
     /// Greedily finds the approximate nearest neighbors to `q` in a non-zero layer.
