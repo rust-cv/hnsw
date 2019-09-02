@@ -227,28 +227,14 @@ where
         searcher: &mut Searcher,
         dest: &'a mut [u32],
     ) -> &'a mut [u32] {
-        // If there is nothing in here, then just return nothing.
-        if self.features.is_empty() {
-            return &mut [];
-        }
-
-        self.initialize_searcher(q, searcher, if self.layers.is_empty() { ef } else { 1 });
-
-        for (ix, layer) in self.layers.iter().enumerate().rev() {
-            self.search_single_layer(q, searcher, layer);
-            self.lower_search(layer, searcher, if ix == 0 { ef } else { 1 });
-        }
-
-        self.search_zero_layer(q, searcher);
-
-        searcher.nearest.fill_slice(dest)
+        self.search_layer(q, ef, 0, searcher, dest)
     }
 
     pub fn feature(&self, item: u32) -> &T {
         &self.features[item as usize]
     }
 
-    pub fn levels(&self) -> usize {
+    pub fn layers(&self) -> usize {
         self.layers.len() + 1
     }
 
@@ -256,10 +242,10 @@ where
         self.zero.len()
     }
 
-    pub fn level_len(&self, level: usize) -> usize {
+    pub fn layer_len(&self, level: usize) -> usize {
         if level == 0 {
             self.features.len()
-        } else if level >= self.levels() {
+        } else if level >= self.layers() {
             self.layers[level - 1].len()
         } else {
             0
@@ -270,8 +256,41 @@ where
         self.zero.is_empty()
     }
 
-    pub fn level_is_empty(&self, level: usize) -> bool {
-        self.level_len(level) == 0
+    pub fn layer_is_empty(&self, level: usize) -> bool {
+        self.layer_len(level) == 0
+    }
+
+    /// Performs the same algorithm as [`HNSW::nearest`], but stops on a particular layer of the network
+    /// and returns the unique index on that layer rather than the item index.
+    ///
+    /// If this is passed a `level` of `0`, then this has the exact same functionality as [`HNSW::nearest`]
+    /// since the unique indices at layer `0` are the item indices.
+    pub fn search_layer<'a>(
+        &self,
+        q: &T,
+        ef: usize,
+        level: usize,
+        searcher: &mut Searcher,
+        dest: &'a mut [u32],
+    ) -> &'a mut [u32] {
+        // If there is nothing in here, then just return nothing.
+        if self.features.is_empty() || level >= self.layers() {
+            return &mut [];
+        }
+
+        self.initialize_searcher(q, searcher, if self.layers.is_empty() { ef } else { 1 });
+
+        for (ix, layer) in self.layers.iter().enumerate().rev() {
+            self.search_single_layer(q, searcher, layer);
+            if ix + 1 == level {
+                return searcher.nearest.fill_slice(dest);
+            }
+            self.lower_search(layer, searcher, if ix == 0 { ef } else { 1 });
+        }
+
+        self.search_zero_layer(q, searcher);
+
+        searcher.nearest.fill_slice(dest)
     }
 
     /// Greedily finds the approximate nearest neighbors to `q` in a non-zero layer.
