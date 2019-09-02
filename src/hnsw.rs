@@ -230,8 +230,25 @@ where
         self.search_layer(q, ef, 0, searcher, dest)
     }
 
+    /// Extract the feature for a given item returned by [`HNSW::nearest`].
+    ///
+    /// The `item` must be retrieved from [`HNSW::search_layer`].
     pub fn feature(&self, item: u32) -> &T {
         &self.features[item as usize]
+    }
+
+    /// Extract the feature from a particular level for a given item returned by [`HNSW::search_layer`].
+    pub fn layer_feature(&self, level: usize, item: u32) -> &T {
+        &self.features[self.layer_item_id(level, item) as usize]
+    }
+
+    /// Retrieve the item ID for a given layer item returned by [`HNSW::search_layer`].
+    pub fn layer_item_id(&self, level: usize, item: u32) -> u32 {
+        if level == 0 {
+            item
+        } else {
+            self.layers[level][item as usize].zero_node
+        }
     }
 
     pub fn layers(&self) -> usize {
