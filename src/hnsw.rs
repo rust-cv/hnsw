@@ -169,7 +169,7 @@ where
         // Find the entry point on the level it was created by searching normally until its level.
         for ix in (level..self.layers.len()).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_layer(&q, searcher, &self.layers[ix]);
+            self.search_single_layer(&q, searcher, &self.layers[ix]);
             // Then lower the search only after we create the node.
             self.lower_search(
                 &self.layers[ix],
@@ -185,7 +185,7 @@ where
         // Then start from its level and connect it to its nearest neighbors.
         for ix in (0..std::cmp::min(level, self.layers.len())).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_layer(&q, searcher, &self.layers[ix]);
+            self.search_single_layer(&q, searcher, &self.layers[ix]);
             // Then use the results of that search on this layer to connect the nodes.
             self.create_node(&q, &searcher.nearest, ix + 1);
             // Then lower the search only after we create the node.
@@ -235,7 +235,7 @@ where
         self.initialize_searcher(q, searcher, if self.layers.is_empty() { ef } else { 1 });
 
         for (ix, layer) in self.layers.iter().enumerate().rev() {
-            self.search_layer(q, searcher, layer);
+            self.search_single_layer(q, searcher, layer);
             self.lower_search(layer, searcher, if ix == 0 { ef } else { 1 });
         }
 
@@ -276,7 +276,7 @@ where
 
     /// Greedily finds the approximate nearest neighbors to `q` in a non-zero layer.
     /// This corresponds to Algorithm 2 in the paper.
-    fn search_layer(&self, q: &T, searcher: &mut Searcher, layer: &[Node<M>]) {
+    fn search_single_layer(&self, q: &T, searcher: &mut Searcher, layer: &[Node<M>]) {
         while let Some((_, node)) = searcher.candidates.pop() {
             for neighbor in layer[node as usize].neighbors() {
                 let neighbor_node = &layer[neighbor as usize];
