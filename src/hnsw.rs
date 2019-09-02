@@ -169,7 +169,7 @@ where
         // Find the entry point on the level it was created by searching normally until its level.
         for ix in (level..self.layers.len()).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_layer(&q, searcher, &self.layers[ix]);
+            self.search_single_layer(&q, searcher, &self.layers[ix]);
             // Then lower the search only after we create the node.
             self.lower_search(
                 &self.layers[ix],
@@ -185,7 +185,7 @@ where
         // Then start from its level and connect it to its nearest neighbors.
         for ix in (0..std::cmp::min(level, self.layers.len())).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_layer(&q, searcher, &self.layers[ix]);
+            self.search_single_layer(&q, searcher, &self.layers[ix]);
             // Then use the results of that search on this layer to connect the nodes.
             self.create_node(&q, &searcher.nearest, ix + 1);
             // Then lower the search only after we create the node.
@@ -227,15 +227,81 @@ where
         searcher: &mut Searcher,
         dest: &'a mut [u32],
     ) -> &'a mut [u32] {
+        self.search_layer(q, ef, 0, searcher, dest)
+    }
+
+    /// Extract the feature for a given item returned by [`HNSW::nearest`].
+    ///
+    /// The `item` must be retrieved from [`HNSW::search_layer`].
+    pub fn feature(&self, item: u32) -> &T {
+        &self.features[item as usize]
+    }
+
+    /// Extract the feature from a particular level for a given item returned by [`HNSW::search_layer`].
+    pub fn layer_feature(&self, level: usize, item: u32) -> &T {
+        &self.features[self.layer_item_id(level, item) as usize]
+    }
+
+    /// Retrieve the item ID for a given layer item returned by [`HNSW::search_layer`].
+    pub fn layer_item_id(&self, level: usize, item: u32) -> u32 {
+        if level == 0 {
+            item
+        } else {
+            self.layers[level][item as usize].zero_node
+        }
+    }
+
+    pub fn layers(&self) -> usize {
+        self.layers.len() + 1
+    }
+
+    pub fn len(&self) -> usize {
+        self.zero.len()
+    }
+
+    pub fn layer_len(&self, level: usize) -> usize {
+        if level == 0 {
+            self.features.len()
+        } else if level >= self.layers() {
+            self.layers[level - 1].len()
+        } else {
+            0
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.zero.is_empty()
+    }
+
+    pub fn layer_is_empty(&self, level: usize) -> bool {
+        self.layer_len(level) == 0
+    }
+
+    /// Performs the same algorithm as [`HNSW::nearest`], but stops on a particular layer of the network
+    /// and returns the unique index on that layer rather than the item index.
+    ///
+    /// If this is passed a `level` of `0`, then this has the exact same functionality as [`HNSW::nearest`]
+    /// since the unique indices at layer `0` are the item indices.
+    pub fn search_layer<'a>(
+        &self,
+        q: &T,
+        ef: usize,
+        level: usize,
+        searcher: &mut Searcher,
+        dest: &'a mut [u32],
+    ) -> &'a mut [u32] {
         // If there is nothing in here, then just return nothing.
-        if self.features.is_empty() {
+        if self.features.is_empty() || level >= self.layers() {
             return &mut [];
         }
 
         self.initialize_searcher(q, searcher, if self.layers.is_empty() { ef } else { 1 });
 
         for (ix, layer) in self.layers.iter().enumerate().rev() {
-            self.search_layer(q, searcher, layer);
+            self.search_single_layer(q, searcher, layer);
+            if ix + 1 == level {
+                return searcher.nearest.fill_slice(dest);
+            }
             self.lower_search(layer, searcher, if ix == 0 { ef } else { 1 });
         }
 
@@ -244,21 +310,9 @@ where
         searcher.nearest.fill_slice(dest)
     }
 
-    pub fn feature(&self, item: u32) -> &T {
-        &self.features[item as usize]
-    }
-
-    pub fn len(&self) -> usize {
-        self.zero.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.zero.is_empty()
-    }
-
     /// Greedily finds the approximate nearest neighbors to `q` in a non-zero layer.
     /// This corresponds to Algorithm 2 in the paper.
-    fn search_layer(&self, q: &T, searcher: &mut Searcher, layer: &[Node<M>]) {
+    fn search_single_layer(&self, q: &T, searcher: &mut Searcher, layer: &[Node<M>]) {
         while let Some((_, node)) = searcher.candidates.pop() {
             for neighbor in layer[node as usize].neighbors() {
                 let neighbor_node = &layer[neighbor as usize];
