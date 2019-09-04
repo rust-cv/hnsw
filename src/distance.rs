@@ -41,6 +41,16 @@ impl Distance for Hamming<&[u8]> {
     }
 }
 
+impl Distance for Hamming<Vec<u8>> {
+    fn distance(Self(lhs): &Self, Self(rhs): &Self) -> u32 {
+        // TODO: This generates pretty sub-optimal code.
+        lhs.iter()
+            .zip(rhs)
+            .map(|(&lhs, &rhs)| (lhs ^ rhs).count_ones())
+            .sum::<u32>()
+    }
+}
+
 impl Distance for Hamming<u8> {
     fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
         (lhs ^ rhs).count_ones()
@@ -129,6 +139,16 @@ impl FloatingDistance for Euclidean<&[f32]> {
         lhs.iter()
             .zip(rhs)
             .map(|(a, b)| (a - b).powi(2))
+            .sum::<f32>()
+    }
+}
+
+impl FloatingDistance for Euclidean<Vec<f32>> {
+    fn floating_distance(Euclidean(lhs): &Self, Euclidean(rhs): &Self) -> f32 {
+        assert_eq!(lhs.len(), rhs.len());
+        lhs.iter()
+            .zip(rhs)
+            .map(|(&a, &b)| (a - b).powi(2))
             .sum::<f32>()
     }
 }
