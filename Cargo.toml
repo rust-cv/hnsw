@@ -1,6 +1,6 @@
 [package]
 name = "hnsw"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["Geordon Worley <vadixidav@gmail.com>"]
 edition = "2018"
 description = "Fast approximate nearest neighbors"
