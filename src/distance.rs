@@ -1,4 +1,6 @@
 pub use packed_simd::{f32x16, f32x2, f32x4, f32x8, u128x2, u128x4};
+#[cfg(feature = "serde-impl")]
+use serde::{Deserialize, Serialize};
 
 /// This is the primary trait used by the HNSW. This is also implemented for [`FloatingDistance`].
 /// If your features have a floating point distance, please implement the distance using [`FloatingDistance`].
@@ -29,6 +31,7 @@ where
 
 /// Treats each bit contained in this struct as its own dimension and distance is computed as hamming distance.
 #[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
+#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 pub struct Hamming<T>(pub T);
 
 impl Distance for Hamming<&[u8]> {
@@ -131,6 +134,7 @@ impl Distance for Hamming<[u128x4; 8]> {
 
 /// Any list, vector, etc of floats wrapped in `Euclidean` is to be treated as having euclidean distance.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 pub struct Euclidean<T>(pub T);
 
 impl FloatingDistance for Euclidean<&[f32]> {
