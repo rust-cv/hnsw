@@ -13,7 +13,7 @@ readme = "README.md"
 
 [features]
 default = ["serde-impl"]
-serde-impl = ["generic-array/serde", "serde"]
+serde-impl = ["serde", "generic-array/serde", "rand_pcg/serde1"]
 
 [dependencies]
 rand_core = "0.5.0"

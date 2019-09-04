@@ -11,7 +11,14 @@ use std::collections::HashSet;
 ///
 /// The type `T` must implement `FloatingDistance` to get implementations.
 #[derive(Clone)]
-#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "serde-impl",
+    derive(Serialize, Deserialize),
+    serde(bound(
+        serialize = "T: Serialize, R: Serialize",
+        deserialize = "T: Deserialize<'de>, R: Deserialize<'de>"
+    ))
+)]
 pub struct HNSW<
     T,
     M: ArrayLength<u32> = typenum::U12,
@@ -34,7 +41,11 @@ pub struct HNSW<
 
 /// A node in the zero layer
 #[derive(Clone)]
-#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "serde-impl",
+    derive(Serialize, Deserialize),
+    serde(bound = "")
+)]
 struct ZeroNode<N: ArrayLength<u32>> {
     /// The neighbors of this node.
     neighbors: GenericArray<u32, N>,
@@ -48,7 +59,11 @@ impl<N: ArrayLength<u32>> ZeroNode<N> {
 
 /// A node in any other layer other than the zero layer
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "serde-impl",
+    derive(Serialize, Deserialize),
+    serde(bound = "")
+)]
 struct Node<N: ArrayLength<u32>> {
     /// The node in the zero layer this refers to.
     zero_node: u32,
