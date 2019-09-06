@@ -277,7 +277,7 @@ where
     pub fn layer_len(&self, level: usize) -> usize {
         if level == 0 {
             self.features.len()
-        } else if level <= self.layers() {
+        } else if level < self.layers() {
             self.layers[level - 1].len()
         } else {
             0
