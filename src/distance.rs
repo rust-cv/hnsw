@@ -54,83 +54,54 @@ impl Distance for Hamming<Vec<u8>> {
     }
 }
 
-impl Distance for Hamming<u8> {
-    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
-        (lhs ^ rhs).count_ones()
-    }
+macro_rules! hamming_native_impl {
+    ($x:ty) => {
+        impl Distance for Hamming<$x> {
+            fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
+                (lhs ^ rhs).count_ones()
+            }
+        }
+    };
 }
 
-impl Distance for Hamming<u16> {
-    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
-        (lhs ^ rhs).count_ones()
-    }
+hamming_native_impl!(u8);
+hamming_native_impl!(u16);
+hamming_native_impl!(u32);
+hamming_native_impl!(u64);
+hamming_native_impl!(u128);
+
+macro_rules! hamming_u128_simd_impl {
+    ($x:ty) => {
+        impl Distance for Hamming<$x> {
+            fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
+                (lhs ^ rhs).count_ones().wrapping_sum() as u32
+            }
+        }
+    };
 }
 
-impl Distance for Hamming<u32> {
-    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
-        (lhs ^ rhs).count_ones()
-    }
+hamming_u128_simd_impl!(u128x2);
+hamming_u128_simd_impl!(u128x4);
+
+macro_rules! hamming_u128x4_simd_array_impl {
+    ($x:expr) => {
+        impl Distance for Hamming<[u128x4; $x]> {
+            fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
+                lhs.iter()
+                    .zip(&rhs)
+                    .map(|(&lhs, &rhs)| (lhs ^ rhs).count_ones().wrapping_sum() as u32)
+                    .sum::<u32>()
+            }
+        }
+    };
 }
 
-impl Distance for Hamming<u64> {
-    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
-        (lhs ^ rhs).count_ones()
-    }
-}
-
-impl Distance for Hamming<u128> {
-    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
-        (lhs ^ rhs).count_ones()
-    }
-}
-
-impl Distance for Hamming<u128x2> {
-    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
-        (lhs ^ rhs).count_ones().wrapping_sum() as u32
-    }
-}
-
-impl Distance for Hamming<u128x4> {
-    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
-        (lhs ^ rhs).count_ones().wrapping_sum() as u32
-    }
-}
-
-impl Distance for Hamming<[u128x4; 1]> {
-    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
-        lhs.iter()
-            .zip(&rhs)
-            .map(|(&lhs, &rhs)| (lhs ^ rhs).count_ones().wrapping_sum() as u32)
-            .sum::<u32>()
-    }
-}
-
-impl Distance for Hamming<[u128x4; 2]> {
-    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
-        lhs.iter()
-            .zip(&rhs)
-            .map(|(&lhs, &rhs)| (lhs ^ rhs).count_ones().wrapping_sum() as u32)
-            .sum::<u32>()
-    }
-}
-
-impl Distance for Hamming<[u128x4; 4]> {
-    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
-        lhs.iter()
-            .zip(&rhs)
-            .map(|(&lhs, &rhs)| (lhs ^ rhs).count_ones().wrapping_sum() as u32)
-            .sum::<u32>()
-    }
-}
-
-impl Distance for Hamming<[u128x4; 8]> {
-    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
-        lhs.iter()
-            .zip(&rhs)
-            .map(|(&lhs, &rhs)| (lhs ^ rhs).count_ones().wrapping_sum() as u32)
-            .sum::<u32>()
-    }
-}
+hamming_u128x4_simd_array_impl!(1);
+hamming_u128x4_simd_array_impl!(2);
+hamming_u128x4_simd_array_impl!(4);
+hamming_u128x4_simd_array_impl!(8);
+hamming_u128x4_simd_array_impl!(16);
+hamming_u128x4_simd_array_impl!(32);
 
 /// Any list, vector, etc of floats wrapped in `Euclidean` is to be treated as having euclidean distance.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -163,35 +134,23 @@ impl FloatingDistance for Euclidean<f32> {
     }
 }
 
-impl FloatingDistance for Euclidean<f32x2> {
-    fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
-        let diff = lhs - rhs;
-        (diff * diff).sum()
-    }
+macro_rules! euclidean_f32_simd_impl {
+    ($x:ty) => {
+        impl FloatingDistance for Euclidean<$x> {
+            fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
+                let diff = lhs - rhs;
+                (diff * diff).sum()
+            }
+        }
+    };
 }
 
-impl FloatingDistance for Euclidean<f32x4> {
-    fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
-        let diff = lhs - rhs;
-        (diff * diff).sum()
-    }
-}
+euclidean_f32_simd_impl!(f32x2);
+euclidean_f32_simd_impl!(f32x4);
+euclidean_f32_simd_impl!(f32x8);
+euclidean_f32_simd_impl!(f32x16);
 
-impl FloatingDistance for Euclidean<f32x8> {
-    fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
-        let diff = lhs - rhs;
-        (diff * diff).sum()
-    }
-}
-
-impl FloatingDistance for Euclidean<f32x16> {
-    fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
-        let diff = lhs - rhs;
-        (diff * diff).sum()
-    }
-}
-
-macro_rules! euclidean_array_impl {
+macro_rules! euclidean_f32x16_simd_array_impl {
     ($x:expr) => {
         impl FloatingDistance for Euclidean<[f32x16; $x]> {
             fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
@@ -207,23 +166,23 @@ macro_rules! euclidean_array_impl {
     };
 }
 
-euclidean_array_impl!(1);
-euclidean_array_impl!(2);
-euclidean_array_impl!(3);
-euclidean_array_impl!(4);
-euclidean_array_impl!(5);
-euclidean_array_impl!(6);
-euclidean_array_impl!(7);
-euclidean_array_impl!(8);
-euclidean_array_impl!(9);
-euclidean_array_impl!(10);
-euclidean_array_impl!(11);
-euclidean_array_impl!(12);
-euclidean_array_impl!(13);
-euclidean_array_impl!(14);
-euclidean_array_impl!(15);
-euclidean_array_impl!(16);
-euclidean_array_impl!(32);
-euclidean_array_impl!(64);
-euclidean_array_impl!(128);
-euclidean_array_impl!(256);
+euclidean_f32x16_simd_array_impl!(1);
+euclidean_f32x16_simd_array_impl!(2);
+euclidean_f32x16_simd_array_impl!(3);
+euclidean_f32x16_simd_array_impl!(4);
+euclidean_f32x16_simd_array_impl!(5);
+euclidean_f32x16_simd_array_impl!(6);
+euclidean_f32x16_simd_array_impl!(7);
+euclidean_f32x16_simd_array_impl!(8);
+euclidean_f32x16_simd_array_impl!(9);
+euclidean_f32x16_simd_array_impl!(10);
+euclidean_f32x16_simd_array_impl!(11);
+euclidean_f32x16_simd_array_impl!(12);
+euclidean_f32x16_simd_array_impl!(13);
+euclidean_f32x16_simd_array_impl!(14);
+euclidean_f32x16_simd_array_impl!(15);
+euclidean_f32x16_simd_array_impl!(16);
+euclidean_f32x16_simd_array_impl!(32);
+euclidean_f32x16_simd_array_impl!(64);
+euclidean_f32x16_simd_array_impl!(128);
+euclidean_f32x16_simd_array_impl!(256);
