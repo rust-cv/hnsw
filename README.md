@@ -11,7 +11,7 @@
 [di]: https://docs.rs/hnsw/badge.svg
 [dl]: https://docs.rs/hnsw/
 
-[lo]: https://tokei.rs/b1/github/rust-photogrammetry/hnsw?category=code
+[lo]: https://tokei.rs/b1/github/rust-cv/hnsw?category=code
 
 Hierarchical Navigable Small World Graph for fast ANN search
 
