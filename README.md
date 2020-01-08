@@ -136,5 +136,5 @@ This is in no way a direct copy or reimplementation of [the original implementat
 
 ## Questions? Contributions? Excited?
 
-Please visit the [Rust Photogrammetry Discord](https://discord.gg/d32jaam).
+Please visit the [Rust CV Discord](https://discord.gg/d32jaam).
 
