@@ -1,12 +1,12 @@
 [package]
 name = "hnsw"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Geordon Worley <vadixidav@gmail.com>"]
 edition = "2018"
 description = "Fast approximate nearest neighbors"
 keywords = ["hamming", "distance", "nearest", "neighbor", "search"]
 categories = ["algorithms", "data-structures", "science"]
-repository = "https://github.com/rust-photogrammetry/hnsw"
+repository = "https://github.com/rust-cv/hnsw"
 documentation = "https://docs.rs/hnsw/"
 license = "MIT"
 readme = "README.md"
