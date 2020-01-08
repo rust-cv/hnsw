@@ -1,6 +1,6 @@
 pub use packed_simd::{f32x16, f32x2, f32x4, f32x8, u8x16, u8x2, u8x32, u8x4, u8x64, u8x8};
 #[cfg(feature = "serde-impl")]
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// This is the primary trait used by the HNSW. This is also implemented for [`FloatingDistance`].
 /// If your features have a floating point distance, please implement the distance using [`FloatingDistance`].
@@ -31,7 +31,6 @@ where
 
 /// Treats each bit contained in this struct as its own dimension and distance is computed as hamming distance.
 #[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
-#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 pub struct Hamming<T>(pub T);
 
 impl Distance for Hamming<&[u8]> {
@@ -41,6 +40,26 @@ impl Distance for Hamming<&[u8]> {
             .zip(rhs)
             .map(|(&lhs, &rhs)| (lhs ^ rhs).count_ones())
             .sum::<u32>()
+    }
+}
+
+#[cfg(feature = "serde-impl")]
+impl Serialize for Hamming<&[u8]> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde-impl")]
+impl<'de> Deserialize<'de> for Hamming<&'de [u8]> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        <&[u8]>::deserialize(deserializer).map(Self)
     }
 }
 
@@ -54,11 +73,51 @@ impl Distance for Hamming<Vec<u8>> {
     }
 }
 
+#[cfg(feature = "serde-impl")]
+impl Serialize for Hamming<Vec<u8>> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde-impl")]
+impl<'de> Deserialize<'de> for Hamming<Vec<u8>> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Vec::deserialize(deserializer).map(Self)
+    }
+}
+
 macro_rules! hamming_native_impl {
     ($x:ty) => {
         impl Distance for Hamming<$x> {
             fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
                 (lhs ^ rhs).count_ones()
+            }
+        }
+
+        #[cfg(feature = "serde-impl")]
+        impl Serialize for Hamming<$x> {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                self.0.serialize(serializer)
+            }
+        }
+
+        #[cfg(feature = "serde-impl")]
+        impl<'de> Deserialize<'de> for Hamming<$x> {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                <$x>::deserialize(deserializer).map(Self)
             }
         }
     };
@@ -71,10 +130,16 @@ hamming_native_impl!(u64);
 hamming_native_impl!(u128);
 
 macro_rules! hamming_u8_simd_impl {
-    ($x:ty) => {
+    ($x:ty, $n:expr) => {
         impl Distance for Hamming<$x> {
             fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
                 (lhs ^ rhs).count_ones().wrapping_sum() as u32
+            }
+        }
+
+        impl From<[u8; $n]> for Hamming<$x> {
+            fn from(a: [u8; $n]) -> Self {
+                a.into()
             }
         }
 
@@ -83,15 +148,46 @@ macro_rules! hamming_u8_simd_impl {
                 Self(<$x>::from_slice_unaligned(a))
             }
         }
+
+        impl Into<[u8; $n]> for Hamming<$x> {
+            fn into(self) -> [u8; $n] {
+                let mut a = [0; $n];
+                for (ix, n) in a.iter_mut().enumerate() {
+                    *n = self.0.extract(ix);
+                }
+                a
+            }
+        }
+
+        #[cfg(feature = "serde-impl")]
+        impl Serialize for Hamming<$x> {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                let a: [u8; $n] = self.clone().into();
+                a.serialize(serializer)
+            }
+        }
+
+        #[cfg(feature = "serde-impl")]
+        impl<'de> Deserialize<'de> for Hamming<$x> {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                <Vec<u8>>::deserialize(deserializer).map(|s| s.as_slice().into())
+            }
+        }
     };
 }
 
-hamming_u8_simd_impl!(u8x2);
-hamming_u8_simd_impl!(u8x4);
-hamming_u8_simd_impl!(u8x8);
-hamming_u8_simd_impl!(u8x16);
-hamming_u8_simd_impl!(u8x32);
-hamming_u8_simd_impl!(u8x64);
+hamming_u8_simd_impl!(u8x2, 2);
+hamming_u8_simd_impl!(u8x4, 4);
+hamming_u8_simd_impl!(u8x8, 8);
+hamming_u8_simd_impl!(u8x16, 16);
+hamming_u8_simd_impl!(u8x32, 32);
+hamming_u8_simd_impl!(u8x64, 64);
 
 macro_rules! hamming_u8x64_simd_array_impl {
     ($x:expr) => {
@@ -131,6 +227,27 @@ macro_rules! hamming_u8x64_simd_array_impl {
                 a
             }
         }
+
+        #[cfg(feature = "serde-impl")]
+        impl Serialize for Hamming<[u8x64; $x]> {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                let a: [u8; 64 * $x] = self.clone().into();
+                a.serialize(serializer)
+            }
+        }
+
+        #[cfg(feature = "serde-impl")]
+        impl<'de> Deserialize<'de> for Hamming<[u8x64; $x]> {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                <Vec<u8>>::deserialize(deserializer).map(|s| s.as_slice().into())
+            }
+        }
     };
 }
 
@@ -143,7 +260,6 @@ hamming_u8x64_simd_array_impl!(32);
 
 /// Any list, vector, etc of floats wrapped in `Euclidean` is to be treated as having euclidean distance.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 pub struct Euclidean<T>(pub T);
 
 impl FloatingDistance for Euclidean<&[f32]> {
@@ -156,6 +272,18 @@ impl FloatingDistance for Euclidean<&[f32]> {
     }
 }
 
+#[cfg(feature = "serde-impl")]
+impl Serialize for Euclidean<&[f32]> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+// NOTE: Deserialize doesn't exist for &[f32] due to https://github.com/serde-rs/serde/issues/915.
+
 impl FloatingDistance for Euclidean<Vec<f32>> {
     fn floating_distance(Euclidean(lhs): &Self, Euclidean(rhs): &Self) -> f32 {
         assert_eq!(lhs.len(), rhs.len());
@@ -166,6 +294,26 @@ impl FloatingDistance for Euclidean<Vec<f32>> {
     }
 }
 
+#[cfg(feature = "serde-impl")]
+impl Serialize for Euclidean<Vec<f32>> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde-impl")]
+impl<'de> Deserialize<'de> for Euclidean<Vec<f32>> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Vec::deserialize(deserializer).map(Self)
+    }
+}
+
 impl FloatingDistance for Euclidean<f32> {
     fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
         (lhs - rhs).abs()
@@ -173,20 +321,63 @@ impl FloatingDistance for Euclidean<f32> {
 }
 
 macro_rules! euclidean_f32_simd_impl {
-    ($x:ty) => {
+    ($x:ty, $n:expr) => {
         impl FloatingDistance for Euclidean<$x> {
             fn floating_distance(&Euclidean(lhs): &Self, &Euclidean(rhs): &Self) -> f32 {
                 let diff = lhs - rhs;
                 (diff * diff).sum()
             }
         }
+
+        impl From<[f32; $n]> for Euclidean<$x> {
+            fn from(a: [f32; $n]) -> Self {
+                a.into()
+            }
+        }
+
+        impl From<&[f32]> for Euclidean<$x> {
+            fn from(a: &[f32]) -> Self {
+                Self(<$x>::from_slice_unaligned(a))
+            }
+        }
+
+        impl Into<[f32; $n]> for Euclidean<$x> {
+            fn into(self) -> [f32; $n] {
+                let mut a = [0.0; $n];
+                for (ix, n) in a.iter_mut().enumerate() {
+                    *n = self.0.extract(ix);
+                }
+                a
+            }
+        }
+
+        #[cfg(feature = "serde-impl")]
+        impl Serialize for Euclidean<$x> {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                let a: [f32; $n] = self.clone().into();
+                a.serialize(serializer)
+            }
+        }
+
+        #[cfg(feature = "serde-impl")]
+        impl<'de> Deserialize<'de> for Euclidean<$x> {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                <Vec<f32>>::deserialize(deserializer).map(|s| s.as_slice().into())
+            }
+        }
     };
 }
 
-euclidean_f32_simd_impl!(f32x2);
-euclidean_f32_simd_impl!(f32x4);
-euclidean_f32_simd_impl!(f32x8);
-euclidean_f32_simd_impl!(f32x16);
+euclidean_f32_simd_impl!(f32x2, 2);
+euclidean_f32_simd_impl!(f32x4, 4);
+euclidean_f32_simd_impl!(f32x8, 8);
+euclidean_f32_simd_impl!(f32x16, 16);
 
 macro_rules! euclidean_f32x16_simd_array_impl {
     ($x:expr) => {
@@ -227,6 +418,27 @@ macro_rules! euclidean_f32x16_simd_array_impl {
                     }
                 }
                 a
+            }
+        }
+
+        #[cfg(feature = "serde-impl")]
+        impl Serialize for Euclidean<[f32x16; $x]> {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                let a: [f32; 16 * $x] = self.clone().into();
+                a.serialize(serializer)
+            }
+        }
+
+        #[cfg(feature = "serde-impl")]
+        impl<'de> Deserialize<'de> for Euclidean<[f32x16; $x]> {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                <Vec<f32>>::deserialize(deserializer).map(|s| s.as_slice().into())
             }
         }
     };
