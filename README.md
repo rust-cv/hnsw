@@ -15,6 +15,8 @@
 
 Hierarchical Navigable Small World Graph for fast ANN search
 
+Enable the `serde-impl` feature to serialize and deserialize `Hamming` and `Euclidean` types.
+
 ## Example
 
 ### Binary feature search using hamming distance
@@ -51,7 +53,7 @@ fn main() {
 }
 ```
 
-Distance is implemented for up to `Hamming<[u128x4; 8]>`, 4096 bits, and it utilizes SIMD for speed so
+Distance is implemented for up to `Hamming<[u8x64; 32]>`, 16384 bits, and it utilizes SIMD for speed so
 long as you use `RUSTFLAGS="-Ctarget-cpu=native" cargo build --release`. There are also impls
 for `Hamming<u8>` through `Hamming<u128>`. You can impl the `Distance` trait on your own types,
 including `Hamming<N>` where `N` is your own type, as that doesn't violate orphan rules.
@@ -107,7 +109,7 @@ fn main() {
 
 `FloatingDistance` is implemented for up to `Euclidean<[f32x16; 256]>`, 4096 floats, and it utilizes
 SIMD for speed so long as you use `RUSTFLAGS="-Ctarget-cpu=native" cargo build --release`. There are
-also impls for `Euclidean<f32>` through `Euclidean<f32x16>`. You can impl the `FloatingDistance` trait
+also impls for `Euclidean<f32x2>` through `Euclidean<f32x16>`. You can impl the `FloatingDistance` trait
 on your own types, including `Euclidean<N>` where `N` is your own type, as that doesn't violate orphan rules.
 
 If you want to determine the number of floats at runtime, you can use the relatively inefficient, but
