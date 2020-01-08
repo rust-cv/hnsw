@@ -1,9 +1,8 @@
-use byteorder::{ByteOrder, NativeEndian};
 use generic_array::{typenum, ArrayLength};
 use gnuplot::*;
 use hnsw::*;
 use itertools::Itertools;
-use packed_simd::{u128x2, u128x4};
+use packed_simd::{u8x16, u8x2, u8x32, u8x4, u8x64, u8x8};
 use rand::distributions::Standard;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
@@ -66,9 +65,9 @@ struct Opt {
 	///
 	#[structopt(short = "d", long = "descriptor_stride", default_value = "61")]
 	descriptor_stride: usize,
-    /// efConstruction controlls the quality of the graph at build-time.
-    #[structopt(short = "c", long = "ef_construction", default_value = "400")]
-    ef_construction: usize,
+	/// efConstruction controlls the quality of the graph at build-time.
+	#[structopt(short = "c", long = "ef_construction", default_value = "400")]
+	ef_construction: usize,
 }
 
 fn process<T: Distance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
@@ -149,10 +148,7 @@ fn process<T: Distance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
 		.cloned()
 		.map(|feature| {
 			let mut v = vec![];
-			for distance in search_space
-				.iter()
-				.map(|n| T::distance(n, &feature))
-			{
+			for distance in search_space.iter().map(|n| T::distance(n, &feature)) {
 				let pos = v.binary_search(&distance).unwrap_or_else(|e| e);
 				v.insert(pos, distance);
 				if v.len() > opt.k {
@@ -166,7 +162,8 @@ fn process<T: Distance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
 	eprintln!("Done.");
 
 	eprintln!("Generating HNSW...");
-	let mut hnsw: HNSW<T, M, M0> = HNSW::new_params(Params::new().ef_construction(opt.ef_construction));
+	let mut hnsw: HNSW<T, M, M0> =
+		HNSW::new_params(Params::new().ef_construction(opt.ef_construction));
 	let mut searcher: Searcher = Searcher::default();
 	for feature in &search_space {
 		hnsw.insert(feature.clone(), &mut searcher);
@@ -214,13 +211,13 @@ fn process<T: Distance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
 macro_rules! process_m {
 	( $opt:expr, $m:ty, $m0:ty ) => {
 		match $opt.bitstring_length {
-			8 => process::<_, $m, $m0>(&$opt, |b| Hamming(b[0])),
-			16 => process::<_, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u16(b))),
-			32 => process::<_, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u32(b))),
-			64 => process::<_, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u64(b))),
-			128 => process::<_, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u128(b))),
-			256 => process::<_, $m, $m0>(&$opt, make_u128x2),
-			512 => process::<_, $m, $m0>(&$opt, make_u128x4),
+			8 => process::<Hamming<u8>, $m, $m0>(&$opt, |b| Hamming(b[0])),
+			16 => process::<Hamming<u8x2>, $m, $m0>(&$opt, |b| b.into()),
+			32 => process::<Hamming<u8x4>, $m, $m0>(&$opt, |b| b.into()),
+			64 => process::<Hamming<u8x8>, $m, $m0>(&$opt, |b| b.into()),
+			128 => process::<Hamming<u8x16>, $m, $m0>(&$opt, |b| b.into()),
+			256 => process::<Hamming<u8x32>, $m, $m0>(&$opt, |b| b.into()),
+			512 => process::<Hamming<u8x64>, $m, $m0>(&$opt, |b| b.into()),
 			_ => panic!("error: incorrect bitstring_length, see --help for choices"),
 			}
 	};
@@ -228,28 +225,6 @@ macro_rules! process_m {
 
 fn main() {
 	let opt = Opt::from_args();
-
-	fn make_u128x2(bytes: &[u8]) -> Hamming<u128x2> {
-		Hamming(
-			[
-				byteorder::NativeEndian::read_u128(&bytes[0..16]),
-				byteorder::NativeEndian::read_u128(&bytes[16..32]),
-			]
-			.into(),
-		)
-	}
-
-	fn make_u128x4(bytes: &[u8]) -> Hamming<u128x4> {
-		Hamming(
-			[
-				byteorder::NativeEndian::read_u128(&bytes[0..16]),
-				byteorder::NativeEndian::read_u128(&bytes[16..32]),
-				byteorder::NativeEndian::read_u128(&bytes[32..48]),
-				byteorder::NativeEndian::read_u128(&bytes[48..64]),
-			]
-			.into(),
-		)
-	}
 
 	let (recalls, times) = {
 		use typenum::*;
