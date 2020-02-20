@@ -186,8 +186,79 @@ hamming_u8_simd_impl!(u8x2, 2);
 hamming_u8_simd_impl!(u8x4, 4);
 hamming_u8_simd_impl!(u8x8, 8);
 hamming_u8_simd_impl!(u8x16, 16);
-hamming_u8_simd_impl!(u8x32, 32);
-hamming_u8_simd_impl!(u8x64, 64);
+
+macro_rules! hamming_u8_big_simd_impl {
+    ($x:ty, $n:expr) => {
+        impl From<[u8; $n]> for Hamming<$x> {
+            fn from(a: [u8; $n]) -> Self {
+                a.into()
+            }
+        }
+
+        impl From<&[u8]> for Hamming<$x> {
+            fn from(a: &[u8]) -> Self {
+                Self(<$x>::from_slice_unaligned(a))
+            }
+        }
+
+        impl Into<[u8; $n]> for Hamming<$x> {
+            fn into(self) -> [u8; $n] {
+                let mut a = [0; $n];
+                for (ix, n) in a.iter_mut().enumerate() {
+                    *n = self.0.extract(ix);
+                }
+                a
+            }
+        }
+
+        #[cfg(feature = "serde-impl")]
+        impl Serialize for Hamming<$x> {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                let a: [u8; $n] = self.clone().into();
+                a.serialize(serializer)
+            }
+        }
+
+        #[cfg(feature = "serde-impl")]
+        impl<'de> Deserialize<'de> for Hamming<$x> {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                <Vec<u8>>::deserialize(deserializer).map(|s| s.as_slice().into())
+            }
+        }
+    };
+}
+
+hamming_u8_big_simd_impl!(u8x32, 32);
+hamming_u8_big_simd_impl!(u8x64, 64);
+
+impl Distance for Hamming<u8x32> {
+    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
+        let all = (lhs ^ rhs).count_ones();
+        // Has to be done in pieces to avoid overflowing u8.
+        let eights = (all & 0b1000) >> 3;
+        let others = all & 0b111;
+        ((eights.wrapping_sum() as u32) << 3) + others.wrapping_sum() as u32
+    }
+}
+
+impl Distance for Hamming<u8x64> {
+    fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
+        let all = (lhs ^ rhs).count_ones();
+        // Has to be done in pieces to avoid overflowing u8.
+        let eights = (all & 0b1000) >> 3;
+        let fours = (all & 0b100) >> 2;
+        let others = all & 0b11;
+        ((eights.wrapping_sum() as u32) << 3)
+            + ((fours.wrapping_sum() as u32) << 2)
+            + others.wrapping_sum() as u32
+    }
+}
 
 macro_rules! hamming_u8x64_simd_array_impl {
     ($x:expr) => {
@@ -195,7 +266,7 @@ macro_rules! hamming_u8x64_simd_array_impl {
             fn distance(&Self(lhs): &Self, &Self(rhs): &Self) -> u32 {
                 lhs.iter()
                     .zip(&rhs)
-                    .map(|(&lhs, &rhs)| (lhs ^ rhs).count_ones().wrapping_sum() as u32)
+                    .map(|(&lhs, &rhs)| Distance::distance(&Hamming(lhs), &Hamming(rhs)))
                     .sum::<u32>()
             }
         }
