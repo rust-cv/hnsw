@@ -1,14 +1,15 @@
+#![no_std]
+extern crate alloc;
+
 pub mod candidates;
-mod distance;
 mod hnsw;
 pub use self::hnsw::*;
 pub use candidates::*;
-pub use distance::*;
 
 pub use generic_array::{typenum, ArrayLength, GenericArray};
 
 #[cfg(feature = "serde-impl")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]

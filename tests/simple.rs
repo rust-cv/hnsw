@@ -1,21 +1,36 @@
 //! Useful tests for debugging since they are hand-written and easy to see the debugging output.
 
-use hnsw::{Euclidean, Searcher, HNSW};
-use packed_simd::f32x4;
+use hnsw::{Searcher, HNSW};
+use space::MetricPoint;
 
-fn test_hnsw() -> (HNSW<Euclidean<f32x4>>, Searcher) {
+struct Euclidean(&'static [f32]);
+
+impl MetricPoint for Euclidean {
+    fn distance(&self, rhs: &Self) -> u32 {
+        space::f32_metric(
+            self.0
+                .iter()
+                .zip(rhs.0.iter())
+                .map(|(&a, &b)| (a - b).powi(2))
+                .sum::<f32>()
+                .sqrt(),
+        )
+    }
+}
+
+fn test_hnsw() -> (HNSW<Euclidean>, Searcher) {
     let mut searcher = Searcher::default();
     let mut hnsw = HNSW::new();
 
     let features = [
-        f32x4::new(0.0, 0.0, 0.0, 1.0),
-        f32x4::new(0.0, 0.0, 1.0, 0.0),
-        f32x4::new(0.0, 1.0, 0.0, 0.0),
-        f32x4::new(1.0, 0.0, 0.0, 0.0),
-        f32x4::new(0.0, 0.0, 1.0, 1.0),
-        f32x4::new(0.0, 1.0, 1.0, 0.0),
-        f32x4::new(1.0, 1.0, 0.0, 0.0),
-        f32x4::new(1.0, 0.0, 0.0, 1.0),
+        &[0.0, 0.0, 0.0, 1.0],
+        &[0.0, 0.0, 1.0, 0.0],
+        &[0.0, 1.0, 0.0, 0.0],
+        &[1.0, 0.0, 0.0, 0.0],
+        &[0.0, 0.0, 1.0, 1.0],
+        &[0.0, 1.0, 1.0, 0.0],
+        &[1.0, 1.0, 0.0, 0.0],
+        &[1.0, 0.0, 0.0, 1.0],
     ];
 
     for &feature in &features {
@@ -37,7 +52,7 @@ fn nearest_neighbor() {
     let mut neighbors = [!0; 8];
 
     hnsw.nearest(
-        &Euclidean(f32x4::new(0.0, 0.0, 0.0, 1.0)),
+        &Euclidean(&[0.0, 0.0, 0.0, 1.0]),
         24,
         searcher,
         &mut neighbors,

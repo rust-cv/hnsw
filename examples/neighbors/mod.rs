@@ -1,7 +1,7 @@
 use criterion::*;
 use hamming_heap::FixedHammingHeap;
 use hnsw::*;
-use packed_simd::u8x32;
+use space::*;
 use std::collections::HashMap;
 use std::io::Read;
 use std::iter::FromIterator;
@@ -25,9 +25,15 @@ fn bench_neighbors(c: &mut Criterion) {
     file.read_exact(&mut v).expect(
         "unable to read enough search descriptors from the file; add more descriptors to file",
     );
-    let search_space: Rc<Vec<Hamming<u8x32>>> = Rc::new(
+    let search_space: Rc<Vec<Hamming<Simd256>>> = Rc::new(
         v.chunks_exact(descriptor_size_bytes)
-            .map(|s| s.into())
+            .map(|b| {
+                let mut arr = [0; 32];
+                for (d, &s) in arr.iter_mut().zip(b) {
+                    *d = s;
+                }
+                Hamming(Simd256(arr))
+            })
             .collect(),
     );
     eprintln!("Done.");
@@ -41,9 +47,15 @@ fn bench_neighbors(c: &mut Criterion) {
     file.read_exact(&mut v).expect(
         "unable to read enough search descriptors from the file; add more descriptors to file",
     );
-    let query_strings: Rc<Vec<Hamming<u8x32>>> = Rc::new(
+    let query_strings: Rc<Vec<Hamming<Simd256>>> = Rc::new(
         v.chunks_exact(descriptor_size_bytes)
-            .map(Hamming::from)
+            .map(|b| {
+                let mut arr = [0; 32];
+                for (d, &s) in arr.iter_mut().zip(b) {
+                    *d = s;
+                }
+                Hamming(Simd256(arr))
+            })
             .collect(),
     );
     eprintln!("Done.");
@@ -52,7 +64,7 @@ fn bench_neighbors(c: &mut Criterion) {
     let hnsw_map = Rc::new(HashMap::<_, _>::from_iter(all_sizes.clone().map(|total| {
         eprintln!("Generating HNSW size {}...", total);
         let range = 0..total;
-        let mut hnsw: HNSW<Hamming<u8x32>> = HNSW::new();
+        let mut hnsw: HNSW<Hamming<Simd256>> = HNSW::new();
         let mut searcher = Searcher::default();
         for i in range.clone() {
             hnsw.insert(search_space[i], &mut searcher);
@@ -76,7 +88,7 @@ fn bench_neighbors(c: &mut Criterion) {
                         let mut best = 0;
                         let mut next_best = 0;
                         for (ix, feature) in search_space[0..total].iter().enumerate() {
-                            let distance = Distance::distance(&search_feature, feature);
+                            let distance = search_feature.distance(feature);
                             if distance < next_best_distance {
                                 if distance < best_distance {
                                     next_best_distance = best_distance;
@@ -124,7 +136,7 @@ fn bench_neighbors(c: &mut Criterion) {
                         nearest.clear();
                         let search_feature = cycle_range.next().unwrap();
                         for (ix, feature) in search_space[0..total].iter().enumerate() {
-                            nearest.push(Distance::distance(&search_feature, feature), ix as u32);
+                            nearest.push(search_feature.distance(feature), ix as u32);
                         }
                         nearest.len()
                     });
@@ -143,7 +155,7 @@ fn bench_neighbors(c: &mut Criterion) {
                         nearest.clear();
                         let search_feature = cycle_range.next().unwrap();
                         for (ix, feature) in search_space[0..total].iter().enumerate() {
-                            nearest.push(Distance::distance(&search_feature, feature), ix as u32);
+                            nearest.push(search_feature.distance(feature), ix as u32);
                         }
                         nearest.len()
                     });
@@ -152,7 +164,7 @@ fn bench_neighbors(c: &mut Criterion) {
         })
         .with_function("10_nn_DiscreteHNSW", {
             {
-                let hnsw_map = hnsw_map.clone();
+                let hnsw_map = hnsw_map;
                 let query_strings = query_strings.clone();
                 move |bencher: &mut Bencher, total: &usize| {
                     let hnsw = &hnsw_map[total];
@@ -179,7 +191,7 @@ fn bench_neighbors(c: &mut Criterion) {
                         nearest.clear();
                         let search_feature = cycle_range.next().unwrap();
                         for (ix, feature) in search_space[0..total].iter().enumerate() {
-                            nearest.push(Distance::distance(&search_feature, feature), ix as u32);
+                            nearest.push(search_feature.distance(feature), ix as u32);
                         }
                         nearest.len()
                     });
@@ -188,8 +200,8 @@ fn bench_neighbors(c: &mut Criterion) {
         })
         .with_function("10_nn_linear_FixedDiscreteCandidates", {
             {
-                let query_strings = query_strings.clone();
-                let search_space = search_space.clone();
+                let query_strings = query_strings;
+                let search_space = search_space;
                 move |bencher: &mut Bencher, &total: &usize| {
                     let mut cycle_range = query_strings.iter().cloned().cycle();
                     let mut nearest = candidates::FixedCandidates::default();
@@ -198,7 +210,7 @@ fn bench_neighbors(c: &mut Criterion) {
                         nearest.clear();
                         let search_feature = cycle_range.next().unwrap();
                         for (ix, feature) in search_space[0..total].iter().enumerate() {
-                            nearest.push(Distance::distance(&search_feature, feature), ix as u32);
+                            nearest.push(search_feature.distance(feature), ix as u32);
                         }
                         nearest.len()
                     });

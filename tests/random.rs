@@ -6,6 +6,7 @@ use rand::Rng;
 use rand_core::SeedableRng;
 use rand_distr::{Bernoulli, Standard};
 use rand_pcg::Pcg64;
+use space::Hamming;
 
 // This can be adjusted lower if it is too slow.
 const SEARCH_SPACE_SIZE: usize = 1 << 16;

@@ -1,11 +1,13 @@
 use crate::*;
 
+use alloc::{vec, vec::Vec};
+use hashbrown::HashSet;
 use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64;
 use rustc_hash::FxHasher;
 #[cfg(feature = "serde-impl")]
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use space::MetricPoint;
 
 /// This provides a HNSW implementation for any distance function.
 ///
@@ -85,7 +87,7 @@ impl<N: ArrayLength<u32>> Node<N> {
 pub struct Searcher {
     candidates: Candidates,
     nearest: FixedCandidates,
-    seen: HashSet<u32, std::hash::BuildHasherDefault<FxHasher>>,
+    seen: HashSet<u32, core::hash::BuildHasherDefault<FxHasher>>,
 }
 
 impl Searcher {
@@ -121,7 +123,7 @@ where
 impl<T, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> HNSW<T, M, M0, R>
 where
     R: RngCore,
-    T: Distance,
+    T: MetricPoint,
 {
     /// Creates a HNSW with the passed `prng`.
     pub fn new_prng(prng: R) -> Self {
@@ -154,7 +156,7 @@ where
         if self.is_empty() {
             // Add the zero node unconditionally.
             self.zero.push(ZeroNode {
-                neighbors: std::iter::repeat(!0).collect(),
+                neighbors: core::iter::repeat(!0).collect(),
             });
             self.features.push(q);
 
@@ -164,7 +166,7 @@ where
                 let node = Node {
                     zero_node: 0,
                     next_node: 0,
-                    neighbors: std::iter::repeat(!0).collect(),
+                    neighbors: core::iter::repeat(!0).collect(),
                 };
                 self.layers.push(vec![node]);
             }
@@ -198,7 +200,7 @@ where
         }
 
         // Then start from its level and connect it to its nearest neighbors.
-        for ix in (0..std::cmp::min(level, self.layers.len())).rev() {
+        for ix in (0..core::cmp::min(level, self.layers.len())).rev() {
             // Perform an ANN search on this layer like normal.
             self.search_single_layer(&q, searcher, &self.layers[ix]);
             // Then use the results of that search on this layer to connect the nodes.
@@ -223,7 +225,7 @@ where
                     .last()
                     .map(|l| (l.len() - 1) as u32)
                     .unwrap_or(zero_node),
-                neighbors: std::iter::repeat(!0).collect(),
+                neighbors: core::iter::repeat(!0).collect(),
             };
             self.layers.push(vec![node]);
         }
@@ -426,7 +428,7 @@ where
     fn create_node(&mut self, q: &T, nearest: &FixedCandidates, layer: usize) {
         if layer == 0 {
             let new_index = self.zero.len();
-            let mut neighbors: GenericArray<u32, M0> = std::iter::repeat(!0).collect();
+            let mut neighbors: GenericArray<u32, M0> = core::iter::repeat(!0).collect();
             nearest.fill_slice(&mut neighbors);
             let node = ZeroNode { neighbors };
             for neighbor in node.neighbors() {
@@ -435,7 +437,7 @@ where
             self.zero.push(node);
         } else {
             let new_index = self.layers[layer - 1].len();
-            let mut neighbors: GenericArray<u32, M> = std::iter::repeat(!0).collect();
+            let mut neighbors: GenericArray<u32, M> = core::iter::repeat(!0).collect();
             nearest.fill_slice(&mut neighbors);
             let node = Node {
                 zero_node: self.zero.len() as u32,
@@ -477,7 +479,7 @@ where
             .map(|(ix, &n)| {
                 // Compute the distance to be higher than possible if the neighbor is not filled yet so its always filled.
                 let distance = if n == !0 {
-                    std::u32::MAX
+                    core::u32::MAX
                 } else {
                     // Compute the distance. The feature is looked up differently for the zero layer.
                     T::distance(

@@ -5,10 +5,27 @@ use hnsw::*;
 use rand::distributions::Standard;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
+use space::MetricPoint;
 use std::cell::RefCell;
 use std::io::Read;
 use std::path::PathBuf;
 use structopt::StructOpt;
+
+#[derive(Clone)]
+struct Euclidean<'a>(&'a [f32]);
+
+impl MetricPoint for Euclidean<'_> {
+    fn distance(&self, rhs: &Self) -> u32 {
+        space::f32_metric(
+            self.0
+                .iter()
+                .zip(rhs.0.iter())
+                .map(|(&a, &b)| (a - b).powi(2))
+                .sum::<f32>()
+                .sqrt(),
+        )
+    }
+}
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "recall", about = "Generates recall graphs for HNSW")]
@@ -147,20 +164,13 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
         "Computing the correct nearest neighbor distance for all {} queries...",
         opt.num_queries
     );
-    let correct_worst_distances: Vec<f32> = query_strings
+    let correct_worst_distances: Vec<u32> = query_strings
         .iter()
         .cloned()
         .map(|feature| {
             let mut v = vec![];
-            for distance in search_space
-                .iter()
-                .map(|n| FloatingDistance::floating_distance(n, &feature))
-            {
-                let pos = v
-                    .binary_search_by_key(&float_ord::FloatOrd(distance), |&distance| {
-                        float_ord::FloatOrd(distance)
-                    })
-                    .unwrap_or_else(|e| e);
+            for distance in search_space.iter().map(|n| n.distance(&feature)) {
+                let pos = v.binary_search(&distance).unwrap_or_else(|e| e);
                 v.insert(pos, distance);
                 if v.len() > opt.k {
                     v.resize_with(opt.k, || unreachable!());
@@ -196,10 +206,8 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
                 // Go through all the features.
                 for &mut feature_ix in hnsw.nearest(&query_feature, ef, searcher, &mut dest) {
                     // Any feature that is less than or equal to the worst real nearest neighbor distance is correct.
-                    if FloatingDistance::floating_distance(
-                        &search_space[feature_ix as usize],
-                        &query_feature,
-                    ) <= correct_worst_distance
+                    if search_space[feature_ix as usize].distance(&query_feature)
+                        <= correct_worst_distance
                     {
                         *correct.borrow_mut() += 1;
                     }

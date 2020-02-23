@@ -1,6 +1,7 @@
 //! Useful tests for debugging since they are hand-written and easy to see the debugging output.
 
-use hnsw::{Hamming, Searcher, HNSW};
+use hnsw::{Searcher, HNSW};
+use space::Hamming;
 
 fn test_hnsw_discrete() -> (HNSW<Hamming<u128>>, Searcher) {
     let mut searcher = Searcher::default();

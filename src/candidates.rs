@@ -1,5 +1,6 @@
+use alloc::vec::Vec;
 #[cfg(feature = "serde-impl")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
@@ -91,7 +92,7 @@ impl FixedCandidates {
 
     /// Fill a slice with the best elements and return the part of the slice written.
     pub fn fill_slice<'a>(&self, s: &'a mut [u32]) -> &'a mut [u32] {
-        let total_fill = std::cmp::min(s.len(), self.len());
+        let total_fill = core::cmp::min(s.len(), self.len());
         for (ix, node) in self
             .candidates
             .iter()

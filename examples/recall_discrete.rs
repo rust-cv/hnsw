@@ -1,11 +1,12 @@
+use byteorder::{ByteOrder, NativeEndian};
 use generic_array::{typenum, ArrayLength};
 use gnuplot::*;
 use hnsw::*;
 use itertools::Itertools;
-use packed_simd::{u8x16, u8x2, u8x32, u8x4, u8x64, u8x8};
 use rand::distributions::Standard;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
+use space::*;
 use std::cell::RefCell;
 use std::io::Read;
 use std::path::PathBuf;
@@ -70,7 +71,7 @@ struct Opt {
 	ef_construction: usize,
 }
 
-fn process<T: Distance + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
+fn process<T: MetricPoint + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
 	opt: &Opt,
 	conv: fn(&[u8]) -> T,
 ) -> (Vec<f64>, Vec<f64>) {
@@ -212,12 +213,26 @@ macro_rules! process_m {
 	( $opt:expr, $m:ty, $m0:ty ) => {
 		match $opt.bitstring_length {
 			8 => process::<Hamming<u8>, $m, $m0>(&$opt, |b| Hamming(b[0])),
-			16 => process::<Hamming<u8x2>, $m, $m0>(&$opt, |b| b.into()),
-			32 => process::<Hamming<u8x4>, $m, $m0>(&$opt, |b| b.into()),
-			64 => process::<Hamming<u8x8>, $m, $m0>(&$opt, |b| b.into()),
-			128 => process::<Hamming<u8x16>, $m, $m0>(&$opt, |b| b.into()),
-			256 => process::<Hamming<u8x32>, $m, $m0>(&$opt, |b| b.into()),
-			512 => process::<Hamming<u8x64>, $m, $m0>(&$opt, |b| b.into()),
+			16 => process::<Hamming<u16>, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u16(b))),
+			32 => process::<Hamming<u32>, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u32(b))),
+			64 => process::<Hamming<u64>, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u64(b))),
+			128 => {
+				process::<Hamming<u128>, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u128(b)))
+				}
+			256 => process::<Hamming<Simd256>, $m, $m0>(&$opt, |b| {
+				let mut arr = [0; 32];
+				for (d, &s) in arr.iter_mut().zip(b) {
+					*d = s;
+					}
+				Hamming(Simd256(arr))
+			}),
+			512 => process::<Hamming<Simd512>, $m, $m0>(&$opt, |b| {
+				let mut arr = [0; 64];
+				for (d, &s) in arr.iter_mut().zip(b) {
+					*d = s;
+					}
+				Hamming(Simd512(arr))
+			}),
 			_ => panic!("error: incorrect bitstring_length, see --help for choices"),
 			}
 	};
