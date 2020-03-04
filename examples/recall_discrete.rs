@@ -177,16 +177,16 @@ fn process<T: MetricPoint + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
     let (recalls, times): (Vec<f64>, Vec<f64>) = efs
         .map(|ef| {
             let correct = RefCell::new(0usize);
-            let dest = vec![!0; opt.k];
+            let dest = vec![Neighbor::invalid(); opt.k];
             let stats = easybench::bench_env(dest, |mut dest| {
                 let mut refmut = state.borrow_mut();
                 let (searcher, query) = &mut *refmut;
                 let (ix, query_feature) = query.next().unwrap();
                 let correct_worst_distance = correct_worst_distances[ix];
                 // Go through all the features.
-                for &mut feature_ix in hnsw.nearest(&query_feature, ef, searcher, &mut dest) {
+                for &mut neighbor in hnsw.nearest(&query_feature, ef, searcher, &mut dest) {
                     // Any feature that is less than or equal to the worst real nearest neighbor distance is correct.
-                    if T::distance(&search_space[feature_ix as usize], &query_feature)
+                    if T::distance(&search_space[neighbor.index], &query_feature)
                         <= correct_worst_distance
                     {
                         *correct.borrow_mut() += 1;

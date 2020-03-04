@@ -6,6 +6,7 @@ use rand::distributions::Standard;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
 use space::MetricPoint;
+use space::Neighbor;
 use std::cell::RefCell;
 use std::io::Read;
 use std::path::PathBuf;
@@ -197,16 +198,16 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
     let (recalls, times): (Vec<f64>, Vec<f64>) = efs
         .map(|ef| {
             let correct = RefCell::new(0usize);
-            let dest = vec![!0; opt.k];
+            let dest = vec![Neighbor::invalid(); opt.k];
             let stats = easybench::bench_env(dest, |mut dest| {
                 let mut refmut = state.borrow_mut();
                 let (searcher, query) = &mut *refmut;
                 let (ix, query_feature) = query.next().unwrap();
                 let correct_worst_distance = correct_worst_distances[ix];
                 // Go through all the features.
-                for &mut feature_ix in hnsw.nearest(&query_feature, ef, searcher, &mut dest) {
+                for &mut neighbor in hnsw.nearest(&query_feature, ef, searcher, &mut dest) {
                     // Any feature that is less than or equal to the worst real nearest neighbor distance is correct.
-                    if search_space[feature_ix as usize].distance(&query_feature)
+                    if search_space[neighbor.index].distance(&query_feature)
                         <= correct_worst_distance
                     {
                         *correct.borrow_mut() += 1;

@@ -1,7 +1,7 @@
 //! Useful tests for debugging since they are hand-written and easy to see the debugging output.
 
 use hnsw::{Searcher, HNSW};
-use space::MetricPoint;
+use space::{MetricPoint, Neighbor};
 
 struct Euclidean(&'static [f32]);
 
@@ -49,7 +49,7 @@ fn insertion() {
 fn nearest_neighbor() {
     let (hnsw, mut searcher) = test_hnsw();
     let searcher = &mut searcher;
-    let mut neighbors = [!0; 8];
+    let mut neighbors = [Neighbor::invalid(); 8];
 
     hnsw.nearest(
         &Euclidean(&[0.0, 0.0, 0.0, 1.0]),
@@ -63,5 +63,41 @@ fn nearest_neighbor() {
     neighbors[3..6].sort_unstable();
     // Distance 3
     neighbors[6..8].sort_unstable();
-    assert_eq!(&neighbors, &[0, 4, 7, 1, 2, 3, 5, 6]);
+    assert_eq!(
+        neighbors,
+        [
+            Neighbor {
+                index: 0,
+                distance: 0
+            },
+            Neighbor {
+                index: 4,
+                distance: 1_065_353_216
+            },
+            Neighbor {
+                index: 7,
+                distance: 1_065_353_216
+            },
+            Neighbor {
+                index: 1,
+                distance: 1_068_827_891
+            },
+            Neighbor {
+                index: 2,
+                distance: 1_068_827_891
+            },
+            Neighbor {
+                index: 3,
+                distance: 1_068_827_891
+            },
+            Neighbor {
+                index: 5,
+                distance: 1_071_494_103
+            },
+            Neighbor {
+                index: 6,
+                distance: 1_071_494_103
+            }
+        ]
+    );
 }

@@ -6,7 +6,7 @@ use rand::Rng;
 use rand_core::SeedableRng;
 use rand_distr::{Bernoulli, Standard};
 use rand_pcg::Pcg64;
-use space::Hamming;
+use space::{Hamming, Neighbor};
 
 // This can be adjusted lower if it is too slow.
 const SEARCH_SPACE_SIZE: usize = 1 << 12;
@@ -16,7 +16,7 @@ fn linear_1_nn() {
     let mut searcher = Searcher::default();
     let searcher = &mut searcher;
     let mut hnsw: HNSW<Hamming<u128>> = HNSW::new();
-    let mut output = [!0; 1];
+    let mut output = [Neighbor::invalid(); 1];
 
     let prng = Pcg64::from_seed([5; 32]);
     let mut rngiter = prng.sample_iter(&Standard);
@@ -42,7 +42,7 @@ fn linear_1_nn() {
         hnsw.nearest(&Hamming(feature), 24, searcher, &mut output);
         // Get their respective found features.
         let linear = *nearest.1;
-        let hnsw = space[output[0] as usize];
+        let hnsw = space[output[0].index];
         eprintln!("{:0128b}", linear);
         eprintln!("{:0128b}", hnsw);
         eprintln!("linear distance: {}", (linear ^ feature).count_ones());
@@ -62,7 +62,7 @@ fn linear_1_nn_inliers() {
     let mut searcher = Searcher::default();
     let searcher = &mut searcher;
     let mut hnsw: HNSW<Hamming<u128>> = HNSW::new();
-    let mut output = [!0; 1];
+    let mut output = [Neighbor::invalid(); 1];
 
     const BIT_DIFF_PROBABILITY_OF_INLIER: f64 = 0.0859;
 
@@ -103,7 +103,7 @@ fn linear_1_nn_inliers() {
         hnsw.nearest(&Hamming(feature), 24, searcher, &mut output);
         // Get their respective found features.
         let linear = *nearest.1;
-        let hnsw = space[output[0] as usize];
+        let hnsw = space[output[0].index];
         eprintln!("{:0128b}", linear);
         eprintln!("{:0128b}", hnsw);
         eprintln!("linear distance: {}", (linear ^ feature).count_ones());

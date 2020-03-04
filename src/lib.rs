@@ -1,10 +1,8 @@
 #![no_std]
 extern crate alloc;
 
-pub mod candidates;
 mod hnsw;
 pub use self::hnsw::*;
-pub use candidates::*;
 
 pub use generic_array::{typenum, ArrayLength, GenericArray};
 

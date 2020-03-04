@@ -7,7 +7,7 @@ use rand_pcg::Pcg64;
 use rustc_hash::FxHasher;
 #[cfg(feature = "serde-impl")]
 use serde::{Deserialize, Serialize};
-use space::MetricPoint;
+use space::{CandidatesVec, MetricPoint, Neighbor};
 
 /// This provides a HNSW implementation for any distance function.
 ///
@@ -85,8 +85,8 @@ impl<N: ArrayLength<u32>> Node<N> {
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 pub struct Searcher {
-    candidates: Candidates,
-    nearest: FixedCandidates,
+    candidates: Vec<Neighbor>,
+    nearest: CandidatesVec,
     seen: HashSet<u32, core::hash::BuildHasherDefault<FxHasher>>,
 }
 
@@ -242,8 +242,8 @@ where
         q: &T,
         ef: usize,
         searcher: &mut Searcher,
-        dest: &'a mut [u32],
-    ) -> &'a mut [u32] {
+        dest: &'a mut [Neighbor],
+    ) -> &'a mut [Neighbor] {
         self.search_layer(q, ef, 0, searcher, dest)
     }
 
@@ -305,8 +305,8 @@ where
         ef: usize,
         level: usize,
         searcher: &mut Searcher,
-        dest: &'a mut [u32],
-    ) -> &'a mut [u32] {
+        dest: &'a mut [Neighbor],
+    ) -> &'a mut [Neighbor] {
         // If there is nothing in here, then just return nothing.
         if self.features.is_empty() || level >= self.layers() {
             return &mut [];
@@ -330,8 +330,8 @@ where
     /// Greedily finds the approximate nearest neighbors to `q` in a non-zero layer.
     /// This corresponds to Algorithm 2 in the paper.
     fn search_single_layer(&self, q: &T, searcher: &mut Searcher, layer: &[Node<M>]) {
-        while let Some((_, node)) = searcher.candidates.pop() {
-            for neighbor in layer[node as usize].neighbors() {
+        while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
+            for neighbor in layer[index as usize].neighbors() {
                 let neighbor_node = &layer[neighbor as usize];
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
                 // across all layers since zero nodes are consistent among all layers.
@@ -340,9 +340,13 @@ where
                     // Compute the distance of this neighbor.
                     let distance = T::distance(q, &self.features[neighbor_node.zero_node as usize]);
                     // Attempt to insert into nearest queue.
-                    if searcher.nearest.push(distance, neighbor) {
+                    let candidate = Neighbor {
+                        index: neighbor as usize,
+                        distance,
+                    };
+                    if searcher.nearest.push(candidate) {
                         // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
-                        searcher.candidates.push(distance, neighbor);
+                        searcher.candidates.push(candidate);
                     }
                 }
             }
@@ -351,8 +355,8 @@ where
 
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
     fn search_zero_layer(&self, q: &T, searcher: &mut Searcher) {
-        while let Some((_, node)) = searcher.candidates.pop() {
-            for neighbor in self.zero[node as usize].neighbors() {
+        while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
+            for neighbor in self.zero[index as usize].neighbors() {
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
                 // across all layers since zero nodes are consistent among all layers.
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
@@ -360,9 +364,13 @@ where
                     // Compute the distance of this neighbor.
                     let distance = T::distance(q, &self.features[neighbor as usize]);
                     // Attempt to insert into nearest queue.
-                    if searcher.nearest.push(distance, neighbor) {
+                    let candidate = Neighbor {
+                        index: neighbor as usize,
+                        distance,
+                    };
+                    if searcher.nearest.push(candidate) {
                         // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
-                        searcher.candidates.push(distance, neighbor);
+                        searcher.candidates.push(candidate);
                     }
                 }
             }
@@ -377,16 +385,20 @@ where
         searcher.candidates.clear();
         // Only preserve the best candidate. The original paper's algorithm uses `1` every time.
         // See Algorithm 5 line 5 of the paper. The paper makes no further comment on why `1` was chosen.
-        let (distance, node) = searcher.nearest.pop().unwrap();
+        let Neighbor { index, distance } = searcher.nearest.best().unwrap();
         searcher.nearest.clear();
         // Set the capacity on the nearest to `m`.
         searcher.nearest.set_cap(m);
         // Update the node to the next layer.
-        let new_node = layer[node as usize].next_node;
+        let new_index = layer[index].next_node as usize;
+        let candidate = Neighbor {
+            index: new_index,
+            distance,
+        };
         // Insert the index of the nearest neighbor into the nearest pool for the next layer.
-        searcher.nearest.push(distance, new_node);
+        searcher.nearest.push(candidate);
         // Insert the index into the candidate pool as well.
-        searcher.candidates.push(distance, new_node);
+        searcher.candidates.push(candidate);
     }
 
     /// Resets a searcher, but does not set the `cap` on the nearest neighbors.
@@ -397,8 +409,12 @@ where
         searcher.nearest.set_cap(cap);
         // Add the entry point.
         let entry_distance = T::distance(q, self.entry_feature());
-        searcher.candidates.push(entry_distance, 0);
-        searcher.nearest.push(entry_distance, 0);
+        let candidate = Neighbor {
+            index: 0,
+            distance: entry_distance,
+        };
+        searcher.candidates.push(candidate);
+        searcher.nearest.push(candidate);
         searcher.seen.insert(
             self.layers
                 .last()
@@ -425,11 +441,13 @@ where
 
     /// Creates a new node at a layer given its nearest neighbors in that layer.
     /// This contains Algorithm 3 from the paper, but also includes some additional logic.
-    fn create_node(&mut self, q: &T, nearest: &FixedCandidates, layer: usize) {
+    fn create_node(&mut self, q: &T, nearest: &CandidatesVec, layer: usize) {
         if layer == 0 {
             let new_index = self.zero.len();
             let mut neighbors: GenericArray<u32, M0> = core::iter::repeat(!0).collect();
-            nearest.fill_slice(&mut neighbors);
+            for (d, s) in neighbors.iter_mut().zip(nearest.iter()) {
+                *d = s.index as u32;
+            }
             let node = ZeroNode { neighbors };
             for neighbor in node.neighbors() {
                 self.add_neighbor(q, new_index as u32, neighbor, layer);
@@ -438,7 +456,9 @@ where
         } else {
             let new_index = self.layers[layer - 1].len();
             let mut neighbors: GenericArray<u32, M> = core::iter::repeat(!0).collect();
-            nearest.fill_slice(&mut neighbors);
+            for (d, s) in neighbors.iter_mut().zip(nearest.iter()) {
+                *d = s.index as u32;
+            }
             let node = Node {
                 zero_node: self.zero.len() as u32,
                 next_node: if layer == 1 {

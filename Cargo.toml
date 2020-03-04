@@ -16,7 +16,7 @@ default = []
 serde1 = ["serde", "generic-array/serde", "rand_pcg/serde1", "space/serde"]
 
 [dependencies]
-space = "0.9.0"
+space = { version = "0.10.2", features = ["candidates-vec"] }
 rand_core = "0.5.0"
 rand_pcg = "0.2.0"
 rand_distr = "0.2.1"
@@ -27,7 +27,7 @@ hashbrown = "0.7.0"
 serde = { version = "1.0", features = ["derive"], optional = true }
 
 [dev-dependencies]
-space = { version = "0.9.0", features = ["simd"] }
+space = { version = "0.10.2", features = ["simd"] }
 hamming-heap = "0.4.1"
 rand = "0.7.0"
 criterion = "0.2.11"

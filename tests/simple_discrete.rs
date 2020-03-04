@@ -1,7 +1,7 @@
 //! Useful tests for debugging since they are hand-written and easy to see the debugging output.
 
 use hnsw::{Searcher, HNSW};
-use space::Hamming;
+use space::{Hamming, Neighbor};
 
 fn test_hnsw_discrete() -> (HNSW<Hamming<u128>>, Searcher) {
     let mut searcher = Searcher::default();
@@ -26,7 +26,7 @@ fn insertion_discrete() {
 #[test]
 fn nearest_neighbor_discrete() {
     let (hnsw, mut searcher) = test_hnsw_discrete();
-    let mut neighbors = [!0; 8];
+    let mut neighbors = [Neighbor::invalid(); 8];
 
     hnsw.nearest(&Hamming(0b0001), 24, &mut searcher, &mut neighbors);
     // Distance 1
@@ -35,5 +35,41 @@ fn nearest_neighbor_discrete() {
     neighbors[3..6].sort_unstable();
     // Distance 3
     neighbors[6..8].sort_unstable();
-    assert_eq!(&neighbors, &[0, 4, 7, 1, 2, 3, 5, 6]);
+    assert_eq!(
+        neighbors,
+        [
+            Neighbor {
+                index: 0,
+                distance: 0
+            },
+            Neighbor {
+                index: 4,
+                distance: 1
+            },
+            Neighbor {
+                index: 7,
+                distance: 1
+            },
+            Neighbor {
+                index: 1,
+                distance: 2
+            },
+            Neighbor {
+                index: 2,
+                distance: 2
+            },
+            Neighbor {
+                index: 3,
+                distance: 2
+            },
+            Neighbor {
+                index: 5,
+                distance: 3
+            },
+            Neighbor {
+                index: 6,
+                distance: 3
+            }
+        ]
+    );
 }

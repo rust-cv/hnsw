@@ -33,7 +33,7 @@ RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --example recall_discrete --
 RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --example recall -- --help
 ```
 
-If you don't want to use random data (highly recommended), please use the `generate.py` script like so:
+It is highly recommended to use real-world data. If you don't want to use random data, please use the `generate.py` script like so:
 
 ```bash
 # AKAZE binary descriptors

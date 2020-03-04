@@ -117,7 +117,7 @@ fn bench_neighbors(c: &mut Criterion) {
                     let mut searcher = Searcher::default();
                     bencher.iter(|| {
                         let feature = cycle_range.next().unwrap();
-                        let mut neighbors = [0; 2];
+                        let mut neighbors = [Neighbor::invalid(); 2];
                         hnsw.nearest(&feature, 24, &mut searcher, &mut neighbors)
                             .len()
                     });
@@ -149,13 +149,14 @@ fn bench_neighbors(c: &mut Criterion) {
                 let search_space = search_space.clone();
                 move |bencher: &mut Bencher, &total: &usize| {
                     let mut cycle_range = query_strings.iter().cloned().cycle();
-                    let mut nearest = FixedCandidates::default();
+                    let mut nearest = CandidatesVec::default();
                     bencher.iter(|| {
                         nearest.set_cap(2);
                         nearest.clear();
                         let search_feature = cycle_range.next().unwrap();
-                        for (ix, feature) in search_space[0..total].iter().enumerate() {
-                            nearest.push(search_feature.distance(feature), ix as u32);
+                        for (index, feature) in search_space[0..total].iter().enumerate() {
+                            let distance = search_feature.distance(feature);
+                            nearest.push(Neighbor { index, distance });
                         }
                         nearest.len()
                     });
@@ -172,7 +173,7 @@ fn bench_neighbors(c: &mut Criterion) {
                     let mut searcher = Searcher::default();
                     bencher.iter(|| {
                         let feature = cycle_range.next().unwrap();
-                        let mut neighbors = [0; 10];
+                        let mut neighbors = [Neighbor::invalid(); 10];
                         hnsw.nearest(&feature, 24, &mut searcher, &mut neighbors)
                             .len()
                     });
@@ -204,13 +205,14 @@ fn bench_neighbors(c: &mut Criterion) {
                 let search_space = search_space;
                 move |bencher: &mut Bencher, &total: &usize| {
                     let mut cycle_range = query_strings.iter().cloned().cycle();
-                    let mut nearest = candidates::FixedCandidates::default();
+                    let mut nearest = CandidatesVec::default();
                     bencher.iter(|| {
                         nearest.set_cap(10);
                         nearest.clear();
                         let search_feature = cycle_range.next().unwrap();
-                        for (ix, feature) in search_space[0..total].iter().enumerate() {
-                            nearest.push(search_feature.distance(feature), ix as u32);
+                        for (index, feature) in search_space[0..total].iter().enumerate() {
+                            let distance = search_feature.distance(feature);
+                            nearest.push(Neighbor { index, distance });
                         }
                         nearest.len()
                     });
