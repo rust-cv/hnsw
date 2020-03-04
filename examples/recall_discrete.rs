@@ -219,19 +219,19 @@ macro_rules! process_m {
             128 => {
                 process::<Hamming<u128>, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u128(b)))
             }
-            256 => process::<Hamming<Simd256>, $m, $m0>(&$opt, |b| {
+            256 => process::<Hamming<Bits256>, $m, $m0>(&$opt, |b| {
                 let mut arr = [0; 32];
                 for (d, &s) in arr.iter_mut().zip(b) {
                     *d = s;
                 }
-                Hamming(Simd256(arr))
+                Hamming(Bits256(arr))
             }),
-            512 => process::<Hamming<Simd512>, $m, $m0>(&$opt, |b| {
+            512 => process::<Hamming<Bits512>, $m, $m0>(&$opt, |b| {
                 let mut arr = [0; 64];
                 for (d, &s) in arr.iter_mut().zip(b) {
                     *d = s;
                 }
-                Hamming(Simd512(arr))
+                Hamming(Bits512(arr))
             }),
             _ => panic!("error: incorrect bitstring_length, see --help for choices"),
         }
@@ -285,5 +285,5 @@ fn main() {
         .set_y_grid(true)
         .set_y_minor_grid(true);
 
-    fg.show();
+    fg.show().expect("unable to show gnuplot");
 }

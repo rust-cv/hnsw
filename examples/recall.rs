@@ -276,5 +276,5 @@ fn main() {
         .set_y_grid(true)
         .set_y_minor_grid(true);
 
-    fg.show();
+    fg.show().expect("unable to show gnuplot");
 }

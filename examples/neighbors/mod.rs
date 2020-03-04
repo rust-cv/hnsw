@@ -25,14 +25,14 @@ fn bench_neighbors(c: &mut Criterion) {
     file.read_exact(&mut v).expect(
         "unable to read enough search descriptors from the file; add more descriptors to file",
     );
-    let search_space: Rc<Vec<Hamming<Simd256>>> = Rc::new(
+    let search_space: Rc<Vec<Hamming<Bits256>>> = Rc::new(
         v.chunks_exact(descriptor_size_bytes)
             .map(|b| {
                 let mut arr = [0; 32];
                 for (d, &s) in arr.iter_mut().zip(b) {
                     *d = s;
                 }
-                Hamming(Simd256(arr))
+                Hamming(Bits256(arr))
             })
             .collect(),
     );
@@ -47,14 +47,14 @@ fn bench_neighbors(c: &mut Criterion) {
     file.read_exact(&mut v).expect(
         "unable to read enough search descriptors from the file; add more descriptors to file",
     );
-    let query_strings: Rc<Vec<Hamming<Simd256>>> = Rc::new(
+    let query_strings: Rc<Vec<Hamming<Bits256>>> = Rc::new(
         v.chunks_exact(descriptor_size_bytes)
             .map(|b| {
                 let mut arr = [0; 32];
                 for (d, &s) in arr.iter_mut().zip(b) {
                     *d = s;
                 }
-                Hamming(Simd256(arr))
+                Hamming(Bits256(arr))
             })
             .collect(),
     );
@@ -64,7 +64,7 @@ fn bench_neighbors(c: &mut Criterion) {
     let hnsw_map = Rc::new(HashMap::<_, _>::from_iter(all_sizes.clone().map(|total| {
         eprintln!("Generating HNSW size {}...", total);
         let range = 0..total;
-        let mut hnsw: HNSW<Hamming<Simd256>> = HNSW::new();
+        let mut hnsw: HNSW<Hamming<Bits256>> = HNSW::new();
         let mut searcher = Searcher::default();
         for i in range.clone() {
             hnsw.insert(search_space[i], &mut searcher);
