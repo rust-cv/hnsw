@@ -120,7 +120,7 @@ are appreciated!
 
 Here is a recall graph that you can [compare to its alternatives](http://ann-benchmarks.com/sift-256-hamming_10_hamming.html):
 
-![Recall Graph](http://vadixidav.github.io/hnsw/0949a5a503402a8f0effef01b42b5360c83c688a/nn10_256bit_10000_m24.svg)
+![Recall Graph](http://vadixidav.github.io/hnsw/839611966a1550d5cba599c78002ee68311e4c37/nn10_256bit_10000_m24.svg)
 
 For more benchmarks and how to benchmark, see [`benchmarks.md`](./benchmarks.md).
 
