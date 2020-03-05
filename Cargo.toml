@@ -47,3 +47,5 @@ codegen-units = 1
 # This is here so we can generate flamegraphs.
 debug = true
 
+[package.metadata.docs.rs]
+all-features = true
