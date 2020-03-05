@@ -18,7 +18,7 @@
 
 Hierarchical Navigable Small World Graph for fast ANN search
 
-Enable the `serde-impl` feature to serialize and deserialize `Hamming` and `Euclidean` types.
+Enable the `serde1` feature to serialize and deserialize `Hamming` and `Euclidean` types.
 
 ## Example
 

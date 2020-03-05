@@ -6,11 +6,11 @@ pub use self::hnsw::*;
 
 pub use generic_array::{typenum, ArrayLength, GenericArray};
 
-#[cfg(feature = "serde-impl")]
+#[cfg(feature = "serde1")]
 use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug)]
-#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 pub struct Params {
     ef_construction: usize,
 }

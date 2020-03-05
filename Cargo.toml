@@ -13,7 +13,7 @@ readme = "README.md"
 
 [features]
 default = []
-serde1 = ["serde", "generic-array/serde", "rand_pcg/serde1", "space/serde"]
+serde1 = ["serde", "generic-array/serde", "rand_pcg/serde1", "space/serde", "hashbrown/serde"]
 
 [dependencies]
 space = { version = "0.10.2", features = ["candidates-vec"] }

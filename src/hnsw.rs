@@ -5,7 +5,7 @@ use hashbrown::HashSet;
 use rand_core::{RngCore, SeedableRng};
 use rand_pcg::Pcg64;
 use rustc_hash::FxHasher;
-#[cfg(feature = "serde-impl")]
+#[cfg(feature = "serde1")]
 use serde::{Deserialize, Serialize};
 use space::{CandidatesVec, MetricPoint, Neighbor};
 
@@ -14,7 +14,7 @@ use space::{CandidatesVec, MetricPoint, Neighbor};
 /// The type `T` must implement `FloatingDistance` to get implementations.
 #[derive(Clone)]
 #[cfg_attr(
-    feature = "serde-impl",
+    feature = "serde1",
     derive(Serialize, Deserialize),
     serde(bound(
         serialize = "T: Serialize, R: Serialize",
@@ -43,11 +43,7 @@ pub struct HNSW<
 
 /// A node in the zero layer
 #[derive(Clone)]
-#[cfg_attr(
-    feature = "serde-impl",
-    derive(Serialize, Deserialize),
-    serde(bound = "")
-)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize), serde(bound = ""))]
 struct ZeroNode<N: ArrayLength<u32>> {
     /// The neighbors of this node.
     neighbors: GenericArray<u32, N>,
@@ -61,11 +57,7 @@ impl<N: ArrayLength<u32>> ZeroNode<N> {
 
 /// A node in any other layer other than the zero layer
 #[derive(Clone, Debug)]
-#[cfg_attr(
-    feature = "serde-impl",
-    derive(Serialize, Deserialize),
-    serde(bound = "")
-)]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize), serde(bound = ""))]
 struct Node<N: ArrayLength<u32>> {
     /// The node in the zero layer this refers to.
     zero_node: u32,
@@ -83,7 +75,7 @@ impl<N: ArrayLength<u32>> Node<N> {
 
 /// Contains all the state used when searching the HNSW
 #[derive(Clone, Debug, Default)]
-#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 pub struct Searcher {
     candidates: Vec<Neighbor>,
     nearest: CandidatesVec,
