@@ -1,7 +1,7 @@
 # hsnw
 
 
-[![Crates.io][ci]][cl] ![MIT/Apache][li] [![docs.rs][di]][dl] ![LoC][lo]
+[![Discord][dci]][dcl] [![Crates.io][ci]][cl] ![MIT/Apache][li] [![docs.rs][di]][dl] ![LoC][lo]
 
 [ci]: https://img.shields.io/crates/v/hnsw.svg
 [cl]: https://crates.io/crates/hnsw/
@@ -13,6 +13,9 @@
 
 [lo]: https://tokei.rs/b1/github/rust-cv/hnsw?category=code
 
+[dci]: https://img.shields.io/discord/550706294311485440.svg?logo=discord&colorB=7289DA
+[dcl]: https://discord.gg/d32jaam
+
 Hierarchical Navigable Small World Graph for fast ANN search
 
 Enable the `serde-impl` feature to serialize and deserialize `Hamming` and `Euclidean` types.
@@ -22,7 +25,8 @@ Enable the `serde-impl` feature to serialize and deserialize `Hamming` and `Eucl
 ### Binary feature search using hamming distance
 
 ```rust
-use hnsw::{Hamming, Searcher, HNSW};
+use hnsw::{Searcher, HNSW};
+use space::{Hamming, Neighbor};
 
 fn main() {
     let mut searcher = Searcher::default();
@@ -39,7 +43,7 @@ fn main() {
     }
 
     // Allocate an array to store nearest neighbors.
-    let mut neighbors = [!0; 8];
+    let mut neighbors = [Neighbor::invalid(); 8];
     // Pass the whole neighbors array as a slice. It will attempt to fill the whole array
     // with nearest neighbors from nearest to furthest.
     hnsw.nearest(&Hamming(0b0001), 24, &mut searcher, &mut neighbors);
@@ -49,72 +53,70 @@ fn main() {
     neighbors[3..6].sort_unstable();
     // Distance 3
     neighbors[6..8].sort_unstable();
-    assert_eq!(&neighbors, &[0, 4, 7, 1, 2, 3, 5, 6]);
+    assert_eq!(
+        neighbors,
+        [
+            Neighbor {
+                index: 0,
+                distance: 0
+            },
+            Neighbor {
+                index: 4,
+                distance: 1
+            },
+            Neighbor {
+                index: 7,
+                distance: 1
+            },
+            Neighbor {
+                index: 1,
+                distance: 2
+            },
+            Neighbor {
+                index: 2,
+                distance: 2
+            },
+            Neighbor {
+                index: 3,
+                distance: 2
+            },
+            Neighbor {
+                index: 5,
+                distance: 3
+            },
+            Neighbor {
+                index: 6,
+                distance: 3
+            }
+        ]
+    );
 }
 ```
 
-Distance is implemented for up to `Hamming<[u8x64; 32]>`, 16384 bits, and it utilizes SIMD for speed so
-long as you use `RUSTFLAGS="-Ctarget-cpu=native" cargo build --release`. There are also impls
-for `Hamming<u8>` through `Hamming<u128>`. You can impl the `Distance` trait on your own types,
-including `Hamming<N>` where `N` is your own type, as that doesn't violate orphan rules.
-
-If you want to determine the number of bytes at runtime, you can use the relatively inefficient, but
-dynamic, impl of `Distance` for `Hamming<&[u8]>`. PRs that improve the performance of this impl are
-appreciated!
+Please refer to the [`space` documentation](https://docs.rs/space/) for the trait and types regarding distance. It also contains special `Bits128` - `Bits4096` tuple structs that wrap an array of bytes and enable SIMD capability. Benchmarks provided use these SIMD impls.
 
 ### Floating-point search using euclidean distance
 
+An implementation is currently not provided for euclidean distance after a recent refactor. Hamming distance was more relevant at the time, and so that was prioritized. To implement euclidean distance, do something roughly like the following:
+
 ```rust
-use hnsw::{Euclidean, Searcher, HNSW};
-use packed_simd::f32x4;
+struct Euclidean<'a>(&'a [f32]);
 
-fn main() {
-    let mut searcher = Searcher::default();
-    let mut hnsw: HNSW<Euclidean<f32x4>> = HNSW::new();
-
-    let features = [
-        f32x4::new(0.0, 0.0, 0.0, 1.0),
-        f32x4::new(0.0, 0.0, 1.0, 0.0),
-        f32x4::new(0.0, 1.0, 0.0, 0.0),
-        f32x4::new(1.0, 0.0, 0.0, 0.0),
-        f32x4::new(0.0, 0.0, 1.0, 1.0),
-        f32x4::new(0.0, 1.0, 1.0, 0.0),
-        f32x4::new(1.0, 1.0, 0.0, 0.0),
-        f32x4::new(1.0, 0.0, 0.0, 1.0),
-    ];
-
-    for &feature in &features {
-        hnsw.insert(Euclidean(feature), &mut searcher);
+impl MetricPoint for Euclidean<'_> {
+    fn distance(&self, rhs: &Self) -> u32 {
+        space::f32_metric(
+            self.0
+                .iter()
+                .zip(rhs.0.iter())
+                .map(|(&a, &b)| (a - b).powi(2))
+                .sum::<f32>()
+                .sqrt(),
+        )
     }
-
-    // Allocate an array to store nearest neighbors.
-    let mut neighbors = [!0; 8];
-    // Pass the whole neighbors array as a slice. It will attempt to fill the whole array
-    // with nearest neighbors from nearest to furthest.
-    hnsw.nearest(
-        &Euclidean(f32x4::new(0.0, 0.0, 0.0, 1.0)),
-        24,
-        &mut searcher,
-        &mut neighbors,
-    );
-    // Distance 1
-    neighbors[1..3].sort_unstable();
-    // Distance 2
-    neighbors[3..6].sort_unstable();
-    // Distance 3
-    neighbors[6..8].sort_unstable();
-    assert_eq!(&neighbors, &[0, 4, 7, 1, 2, 3, 5, 6]);
 }
 ```
 
-`FloatingDistance` is implemented for up to `Euclidean<[f32x16; 256]>`, 4096 floats, and it utilizes
-SIMD for speed so long as you use `RUSTFLAGS="-Ctarget-cpu=native" cargo build --release`. There are
-also impls for `Euclidean<f32x2>` through `Euclidean<f32x16>`. You can impl the `FloatingDistance` trait
-on your own types, including `Euclidean<N>` where `N` is your own type, as that doesn't violate orphan rules.
-
-If you want to determine the number of floats at runtime, you can use the relatively inefficient, but
-dynamic, impl of `FloatingDistance` for `Euclidean<&[f32]>`. PRs that improve the performance of this impl
-are appreciated!
+Note that the above implementation may have some numerical error on high dimensionality. In that case use a [Kahan sum](https://en.wikipedia.org/wiki/Kahan_summation_algorithm) instead.
 
 ## Benchmarks
 
@@ -132,7 +134,7 @@ For more details about parameters and details of the implementation, see [`imple
 
 ## Credit
 
-This is in no way a direct copy or reimplementation of [the original implementation](https://github.com/nmslib/hnswlib/blob/master/hnswlib/hnswalg.h). This was made purely based on [the paper](https://arxiv.org/pdf/1603.09320.pdf) without reference to the original headers. The paper is very well written and easy to understand, with some minor exceptions, so I never needed to refer to the original headers as I thought I would when I began working on this. Thank you to the authors for your valuble contribution.
+This is in no way a direct copy or reimplementation of [the original implementation](https://github.com/nmslib/hnswlib/blob/master/hnswlib/hnswalg.h). This was made purely based on [the paper](https://arxiv.org/pdf/1603.09320.pdf) without reference to the original headers. The paper is very well written and easy to understand, with some minor exceptions. Thank you to the authors for your valuble contribution.
 
 ## Questions? Contributions? Excited?
 
