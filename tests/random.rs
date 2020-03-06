@@ -9,7 +9,7 @@ use rand_pcg::Pcg64;
 use space::{Hamming, Neighbor};
 
 // This can be adjusted lower if it is too slow.
-const SEARCH_SPACE_SIZE: usize = 1 << 12;
+const SEARCH_SPACE_SIZE: usize = 1 << 10;
 
 #[test]
 fn linear_1_nn() {
