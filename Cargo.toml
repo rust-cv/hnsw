@@ -11,6 +11,9 @@ documentation = "https://docs.rs/hnsw/"
 license = "MIT"
 readme = "README.md"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = []
 serde1 = ["serde", "generic-array/serde", "rand_pcg/serde1", "space/serde", "hashbrown/serde"]
@@ -19,15 +22,16 @@ serde1 = ["serde", "generic-array/serde", "rand_pcg/serde1", "space/serde", "has
 space = { version = "0.10.2", features = ["candidates-vec"] }
 rand_core = "0.5.0"
 rand_pcg = "0.2.0"
-rand_distr = "0.2.1"
 rustc-hash = { version = "1.1.0", default-features = false }
 generic-array = "0.13.2"
 typenum = "1.10.0"
 hashbrown = "0.7.0"
 serde = { version = "1.0", features = ["derive"], optional = true }
+libm = "0.2.1"
 
 [dev-dependencies]
 space = { version = "0.10.2", features = ["simd"] }
+rand_distr = "0.2.1"
 hamming-heap = "0.4.1"
 rand = "0.7.0"
 criterion = "0.2.11"
@@ -46,6 +50,3 @@ opt-level = 3
 codegen-units = 1
 # This is here so we can generate flamegraphs.
 debug = true
-
-[package.metadata.docs.rs]
-all-features = true
