@@ -427,7 +427,7 @@ where
     /// Generates a correctly distributed random level as per Algorithm 1 line 4 of the paper.
     fn random_level(&mut self) -> usize {
         let uniform: f64 = self.prng.next_u32() as f64 / core::u32::MAX as f64;
-        (libm::log(-uniform) * libm::log(M::to_usize() as f64).recip()) as usize
+        (-libm::log(uniform) * libm::log(M::to_usize() as f64).recip()) as usize
     }
 
     /// Creates a new node at a layer given its nearest neighbors in that layer.

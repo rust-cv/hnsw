@@ -10,13 +10,13 @@ Please note that `M = 24` is not optimal for the above graph at 10000 items. The
 
 You can find benchmarks of HNSW with 256-bit binary features vs linear search on 2-NN with `ef` parameter of `24`, `M` parameter of `24` (very high recall), and `efConstruction` set to `400` [here](http://vadixidav.github.io/hnsw/839611966a1550d5cba599c78002ee68311e4c37/report/index.html). This compares it against linear search, which is pretty fast in small datasets. This is not really a valid comparison because it is comparing apples to oranges (a linear search which is perfect with an ANN algorithm that is getting worse at recall). However, this benchmark is useful for profiling the code, so I will share its results here. Please use the recall graphs above as the actual point of comparison.
 
-You can also generate recall graphs (native cpu instructions recommended). Use the following to see how:
+You can also generate recall graphs. Use the following to see how:
 
 ```bash
 # Discrete version (binary descriptors)
-RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --example recall_discrete -- --help
+cargo run --release --example recall_discrete -- --help
 # Non-discrete version (floating descriptors)
-RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --example recall -- --help
+cargo run --release --example recall -- --help
 ```
 
 It is highly recommended to use real-world data. If you don't want to use random data, please use the `generate.py` script like so:
