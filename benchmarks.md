@@ -28,7 +28,7 @@ python3 scripts/generate.py akaze 2011_09_29/2011_09_29_drive_0071_extract/image
 python3 scripts/generate.py kaze 2011_09_29/2011_09_29_drive_0071_extract/image_00/data/*.png > data/kaze
 ```
 
-This code ran againt the Kitti dataset ` 2011_09_29_drive_0071`. You can find that [here](http://www.cvlibs.net/datasets/kitti/raw_data.php). Download "[unsynced+unrectified data]". It is a large (4.1 GB) download, so it may take some time.
+This code ran againt the Kitti dataset `2011_09_29_drive_0071`. You can find that [here](http://www.cvlibs.net/datasets/kitti/raw_data.php). Download "[unsynced+unrectified data]". It is a large (4.1 GB) download, so it may take some time.
 
 You can still run the above generation against any dataset you would like if you would like to test its performance on said dataset.
 

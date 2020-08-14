@@ -11,6 +11,10 @@ documentation = "https://docs.rs/hnsw/"
 license = "MIT"
 readme = "README.md"
 
+[[bench]]
+name = "benches"
+harness = false
+
 [package.metadata.docs.rs]
 all-features = true
 
