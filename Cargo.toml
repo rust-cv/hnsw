@@ -19,28 +19,28 @@ default = []
 serde1 = ["serde", "generic-array/serde", "rand_pcg/serde1", "space/serde", "hashbrown/serde"]
 
 [dependencies]
-space = { version = "0.10.2", features = ["candidates-vec"] }
-rand_core = "0.5.0"
-rand_pcg = "0.2.0"
+space = { version = "0.10.3", features = ["candidates-vec"] }
+rand_core = "0.5.1"
+rand_pcg = "0.2.1"
 rustc-hash = { version = "1.1.0", default-features = false }
-generic-array = "0.13.2"
-typenum = "1.10.0"
-hashbrown = "0.7.0"
-serde = { version = "1.0", features = ["derive"], optional = true }
+generic-array = "0.14.4"
+typenum = "1.12.0"
+hashbrown = "0.8.2"
+serde = { version = "1.0.115", features = ["derive"], optional = true }
 libm = "0.2.1"
 
 [dev-dependencies]
-space = { version = "0.10.2", features = ["simd"] }
-rand_distr = "0.2.1"
+space = { version = "0.10.3", features = ["simd"] }
+rand_distr = "0.2.2"
 hamming-heap = "0.4.1"
-rand = "0.7.0"
-criterion = "0.2.11"
-gnuplot = "0.0.34"
-structopt = "0.2.18"
-easybench = "0.1.4"
-itertools = "0.8.0"
+rand = "0.7.3"
+criterion = "0.3.3"
+gnuplot = "0.0.37"
+structopt = "0.3.16"
+easybench = "1.0.0"
+itertools = "0.9.0"
 float-ord = "0.2.0"
-byteorder = "1.3.2"
+byteorder = "1.3.4"
 
 [profile.dev]
 # The tests take a very long time without optimization.
