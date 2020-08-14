@@ -9,7 +9,7 @@ use std::rc::Rc;
 use rand_pcg::Pcg64;
 
 fn bench_neighbors(c: &mut Criterion) {
-    let space_mags = 0..=15;
+    let space_mags = 0..=20;
     let all_sizes = (space_mags).map(|n| 2usize.pow(n));
     let filepath = "data/akaze";
     let total_descriptors = all_sizes.clone().rev().next().unwrap();
