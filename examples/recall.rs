@@ -1,5 +1,7 @@
+#![allow(incomplete_features)]
+#![feature(const_generics)]
+
 use byteorder::{ByteOrder, LittleEndian};
-use generic_array::{typenum, ArrayLength};
 use gnuplot::*;
 use hnsw::*;
 use rand::distributions::Standard;
@@ -84,7 +86,7 @@ struct Opt {
     ef_construction: usize,
 }
 
-fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
+fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
     assert!(
         opt.k <= opt.size,
         "You must choose a dataset size larger or equal to the test search size"
@@ -184,7 +186,7 @@ fn process<M: ArrayLength<u32>, M0: ArrayLength<u32>>(opt: &Opt) -> (Vec<f64>, V
     eprintln!("Done.");
 
     eprintln!("Generating HNSW...");
-    let mut hnsw: HNSW<_, M, M0> =
+    let mut hnsw: HNSW<_, Pcg64, M, M0> =
         HNSW::new_params(Params::new().ef_construction(opt.ef_construction));
     let mut searcher: Searcher = Searcher::default();
     for feature in &search_space {
@@ -234,22 +236,21 @@ fn main() {
     let opt = Opt::from_args();
 
     let (recalls, times) = {
-        use typenum::*;
         // This can be increased indefinitely at the expense of compile time.
         match opt.m {
-            4 => process::<U4, U8>(&opt),
-            8 => process::<U8, U16>(&opt),
-            12 => process::<U12, U24>(&opt),
-            16 => process::<U16, U32>(&opt),
-            20 => process::<U20, U40>(&opt),
-            24 => process::<U24, U48>(&opt),
-            28 => process::<U28, U56>(&opt),
-            32 => process::<U32, U64>(&opt),
-            36 => process::<U36, U72>(&opt),
-            40 => process::<U40, U80>(&opt),
-            44 => process::<U44, U88>(&opt),
-            48 => process::<U48, U96>(&opt),
-            52 => process::<U52, U104>(&opt),
+            4 => process::<4, 8>(&opt),
+            8 => process::<8, 16>(&opt),
+            12 => process::<12, 24>(&opt),
+            16 => process::<16, 32>(&opt),
+            20 => process::<20, 40>(&opt),
+            24 => process::<24, 48>(&opt),
+            28 => process::<28, 56>(&opt),
+            32 => process::<32, 64>(&opt),
+            36 => process::<36, 72>(&opt),
+            40 => process::<40, 80>(&opt),
+            44 => process::<44, 88>(&opt),
+            48 => process::<48, 96>(&opt),
+            52 => process::<52, 104>(&opt),
             _ => {
                 eprintln!("Only M between 4 and 52 inclusive and multiples of 4 are allowed");
                 return;

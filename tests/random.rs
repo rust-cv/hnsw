@@ -4,7 +4,7 @@ use hnsw::*;
 use rand::seq::SliceRandom;
 use rand::Rng;
 use rand_core::SeedableRng;
-use rand_distr::{Bernoulli, Standard};
+use rand::distributions::{Bernoulli, Standard};
 use rand_pcg::Pcg64;
 use space::{Hamming, Neighbor};
 
@@ -15,7 +15,7 @@ const SEARCH_SPACE_SIZE: usize = 1 << 10;
 fn linear_1_nn() {
     let mut searcher = Searcher::default();
     let searcher = &mut searcher;
-    let mut hnsw: HNSW<Hamming<u128>> = HNSW::new();
+    let mut hnsw: HNSW<Hamming<u128>, Pcg64, 12, 24> = HNSW::new();
     let mut output = [Neighbor::invalid(); 1];
 
     let prng = Pcg64::from_seed([5; 32]);
@@ -61,7 +61,7 @@ fn linear_1_nn() {
 fn linear_1_nn_inliers() {
     let mut searcher = Searcher::default();
     let searcher = &mut searcher;
-    let mut hnsw: HNSW<Hamming<u128>> = HNSW::new();
+    let mut hnsw: HNSW<Hamming<u128>, Pcg64, 12, 24> = HNSW::new();
     let mut output = [Neighbor::invalid(); 1];
 
     const BIT_DIFF_PROBABILITY_OF_INLIER: f64 = 0.0859;

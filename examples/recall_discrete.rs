@@ -1,5 +1,7 @@
+#![allow(incomplete_features)]
+#![feature(const_generics)]
+
 use byteorder::{ByteOrder, NativeEndian};
-use generic_array::{typenum, ArrayLength};
 use gnuplot::*;
 use hnsw::*;
 use itertools::Itertools;
@@ -71,7 +73,7 @@ struct Opt {
     ef_construction: usize,
 }
 
-fn process<T: MetricPoint + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
+fn process<T: MetricPoint + Clone, const M: usize, const M0: usize>(
     opt: &Opt,
     conv: fn(&[u8]) -> T,
 ) -> (Vec<f64>, Vec<f64>) {
@@ -163,7 +165,7 @@ fn process<T: MetricPoint + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
     eprintln!("Done.");
 
     eprintln!("Generating HNSW...");
-    let mut hnsw: HNSW<T, M, M0> =
+    let mut hnsw: HNSW<T, Pcg64, M, M0> =
         HNSW::new_params(Params::new().ef_construction(opt.ef_construction));
     let mut searcher: Searcher = Searcher::default();
     for feature in &search_space {
@@ -210,7 +212,7 @@ fn process<T: MetricPoint + Clone, M: ArrayLength<u32>, M0: ArrayLength<u32>>(
 }
 
 macro_rules! process_m {
-    ( $opt:expr, $m:ty, $m0:ty ) => {
+    ( $opt:expr, $m:expr, $m0:expr ) => {
         match $opt.bitstring_length {
             8 => process::<Hamming<u8>, $m, $m0>(&$opt, |b| Hamming(b[0])),
             16 => process::<Hamming<u16>, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u16(b))),
@@ -242,22 +244,21 @@ fn main() {
     let opt = Opt::from_args();
 
     let (recalls, times) = {
-        use typenum::*;
         // This can be increased indefinitely at the expense of compile time.
         match opt.m {
-            4 => process_m!(opt, U4, U8),
-            8 => process_m!(opt, U8, U16),
-            12 => process_m!(opt, U12, U24),
-            16 => process_m!(opt, U16, U32),
-            20 => process_m!(opt, U20, U40),
-            24 => process_m!(opt, U24, U48),
-            28 => process_m!(opt, U28, U56),
-            32 => process_m!(opt, U32, U64),
-            36 => process_m!(opt, U36, U72),
-            40 => process_m!(opt, U40, U80),
-            44 => process_m!(opt, U44, U88),
-            48 => process_m!(opt, U48, U96),
-            52 => process_m!(opt, U52, U104),
+            4 => process_m!(opt, 4, 8),
+            8 => process_m!(opt, 8, 16),
+            12 => process_m!(opt, 12, 24),
+            16 => process_m!(opt, 16, 32),
+            20 => process_m!(opt, 20, 40),
+            24 => process_m!(opt, 24, 48),
+            28 => process_m!(opt, 28, 56),
+            32 => process_m!(opt, 32, 64),
+            36 => process_m!(opt, 36, 72),
+            40 => process_m!(opt, 40, 80),
+            44 => process_m!(opt, 44, 88),
+            48 => process_m!(opt, 48, 96),
+            52 => process_m!(opt, 52, 104),
             _ => {
                 eprintln!("Only M between 4 and 52 inclusive and multiples of 4 are allowed");
                 return;

@@ -2,8 +2,9 @@
 
 use hnsw::{Searcher, HNSW};
 use space::{Hamming, Neighbor};
+use rand_pcg::Pcg64;
 
-fn test_hnsw_discrete() -> (HNSW<Hamming<u128>>, Searcher) {
+fn test_hnsw_discrete() -> (HNSW<Hamming<u128>, Pcg64, 12, 24>, Searcher) {
     let mut searcher = Searcher::default();
     let mut hnsw = HNSW::new();
 

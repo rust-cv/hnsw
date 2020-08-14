@@ -2,6 +2,7 @@
 
 use hnsw::{Searcher, HNSW};
 use space::{MetricPoint, Neighbor};
+use rand_pcg::Pcg64;
 
 struct Euclidean(&'static [f32]);
 
@@ -18,7 +19,7 @@ impl MetricPoint for Euclidean {
     }
 }
 
-fn test_hnsw() -> (HNSW<Euclidean>, Searcher) {
+fn test_hnsw() -> (HNSW<Euclidean, Pcg64, 12, 24>, Searcher) {
     let mut searcher = Searcher::default();
     let mut hnsw = HNSW::new();
 

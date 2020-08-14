@@ -3,7 +3,6 @@ use crate::*;
 use alloc::{vec, vec::Vec};
 use hashbrown::HashSet;
 use rand_core::{RngCore, SeedableRng};
-use rand_pcg::Pcg64;
 use rustc_hash::FxHasher;
 #[cfg(feature = "serde1")]
 use serde::{Deserialize, Serialize};
@@ -23,9 +22,9 @@ use space::{CandidatesVec, MetricPoint, Neighbor};
 )]
 pub struct HNSW<
     T,
-    M: ArrayLength<u32> = typenum::U12,
-    M0: ArrayLength<u32> = typenum::U24,
-    R = Pcg64,
+    R,
+    const M: usize,
+    const M0: usize,
 > {
     /// Contains the zero layer.
     zero: Vec<ZeroNode<M0>>,
@@ -44,12 +43,12 @@ pub struct HNSW<
 /// A node in the zero layer
 #[derive(Clone)]
 #[cfg_attr(feature = "serde1", derive(Serialize, Deserialize), serde(bound = ""))]
-struct ZeroNode<N: ArrayLength<u32>> {
+struct ZeroNode<const N: usize> {
     /// The neighbors of this node.
-    neighbors: GenericArray<u32, N>,
+    neighbors: [u32; N],
 }
 
-impl<N: ArrayLength<u32>> ZeroNode<N> {
+impl<const N: usize> ZeroNode<N> {
     fn neighbors<'a>(&'a self) -> impl Iterator<Item = u32> + 'a {
         self.neighbors.iter().cloned().take_while(|&n| n != !0)
     }
@@ -58,16 +57,16 @@ impl<N: ArrayLength<u32>> ZeroNode<N> {
 /// A node in any other layer other than the zero layer
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde1", derive(Serialize, Deserialize), serde(bound = ""))]
-struct Node<N: ArrayLength<u32>> {
+struct Node<const N: usize> {
     /// The node in the zero layer this refers to.
     zero_node: u32,
     /// The node in the layer below this one that this node corresponds to.
     next_node: u32,
     /// The neighbors in the graph of this node.
-    neighbors: GenericArray<u32, N>,
+    neighbors: [u32; N],
 }
 
-impl<N: ArrayLength<u32>> Node<N> {
+impl<const N: usize> Node<N> {
     fn neighbors<'a>(&'a self) -> impl Iterator<Item = u32> + 'a {
         self.neighbors.iter().cloned().take_while(|&n| n != !0)
     }
@@ -94,7 +93,7 @@ impl Searcher {
     }
 }
 
-impl<T, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> HNSW<T, M, M0, R>
+impl<T, R, const M: usize, const M0: usize> HNSW<T, R, M, M0>
 where
     R: RngCore + SeedableRng,
 {
@@ -112,7 +111,7 @@ where
     }
 }
 
-impl<T, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> HNSW<T, M, M0, R>
+impl<T, R, const M: usize, const M0: usize> HNSW<T, R, M, M0>
 where
     R: RngCore,
     T: MetricPoint,
@@ -148,7 +147,7 @@ where
         if self.is_empty() {
             // Add the zero node unconditionally.
             self.zero.push(ZeroNode {
-                neighbors: core::iter::repeat(!0).collect(),
+                neighbors: [!0; M0],
             });
             self.features.push(q);
 
@@ -158,7 +157,7 @@ where
                 let node = Node {
                     zero_node: 0,
                     next_node: 0,
-                    neighbors: core::iter::repeat(!0).collect(),
+                    neighbors: [!0; M],
                 };
                 self.layers.push(vec![node]);
             }
@@ -217,7 +216,7 @@ where
                     .last()
                     .map(|l| (l.len() - 1) as u32)
                     .unwrap_or(zero_node),
-                neighbors: core::iter::repeat(!0).collect(),
+                neighbors: [!0; M],
             };
             self.layers.push(vec![node]);
         }
@@ -427,7 +426,7 @@ where
     /// Generates a correctly distributed random level as per Algorithm 1 line 4 of the paper.
     fn random_level(&mut self) -> usize {
         let uniform: f64 = self.prng.next_u32() as f64 / core::u32::MAX as f64;
-        (-libm::log(uniform) * libm::log(M::to_usize() as f64).recip()) as usize
+        (-libm::log(uniform) * libm::log(M as f64).recip()) as usize
     }
 
     /// Creates a new node at a layer given its nearest neighbors in that layer.
@@ -435,7 +434,7 @@ where
     fn create_node(&mut self, q: &T, nearest: &CandidatesVec, layer: usize) {
         if layer == 0 {
             let new_index = self.zero.len();
-            let mut neighbors: GenericArray<u32, M0> = core::iter::repeat(!0).collect();
+            let mut neighbors: [u32; M0] = [!0; M0];
             for (d, s) in neighbors.iter_mut().zip(nearest.iter()) {
                 *d = s.index as u32;
             }
@@ -446,7 +445,7 @@ where
             self.zero.push(node);
         } else {
             let new_index = self.layers[layer - 1].len();
-            let mut neighbors: GenericArray<u32, M> = core::iter::repeat(!0).collect();
+            let mut neighbors: [u32; M] = [!0; M];
             for (d, s) in neighbors.iter_mut().zip(nearest.iter()) {
                 *d = s.index as u32;
             }
@@ -520,7 +519,7 @@ where
     }
 }
 
-impl<T, M: ArrayLength<u32>, M0: ArrayLength<u32>, R> Default for HNSW<T, M, M0, R>
+impl<T, R, const M: usize, const M0: usize> Default for HNSW<T, R, M, M0>
 where
     R: SeedableRng,
 {

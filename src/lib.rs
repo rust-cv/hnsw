@@ -1,10 +1,10 @@
+#![allow(incomplete_features)]
+#![feature(const_generics)]
 #![no_std]
 extern crate alloc;
 
 mod hnsw;
 pub use self::hnsw::*;
-
-pub use generic_array::{typenum, ArrayLength, GenericArray};
 
 #[cfg(feature = "serde1")]
 use serde::{Deserialize, Serialize};
