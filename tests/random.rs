@@ -1,10 +1,10 @@
 //! More robust tests that are generated from substantial random data.
 
 use hnsw::*;
+use rand::distributions::{Bernoulli, Standard};
 use rand::seq::SliceRandom;
 use rand::Rng;
 use rand_core::SeedableRng;
-use rand::distributions::{Bernoulli, Standard};
 use rand_pcg::Pcg64;
 use space::{Hamming, Neighbor};
 

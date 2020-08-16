@@ -1,8 +1,8 @@
 //! Useful tests for debugging since they are hand-written and easy to see the debugging output.
 
 use hnsw::{Searcher, HNSW};
-use space::{MetricPoint, Neighbor};
 use rand_pcg::Pcg64;
+use space::{MetricPoint, Neighbor};
 
 struct Euclidean(&'static [f32]);
 

@@ -1,8 +1,8 @@
 //! Useful tests for debugging since they are hand-written and easy to see the debugging output.
 
 use hnsw::{Searcher, HNSW};
-use space::{Hamming, Neighbor};
 use rand_pcg::Pcg64;
+use space::{Hamming, Neighbor};
 
 fn test_hnsw_discrete() -> (HNSW<Hamming<u128>, Pcg64, 12, 24>, Searcher) {
     let mut searcher = Searcher::default();

@@ -1,7 +1,7 @@
-use super::{NeighborNodes};
+use super::NeighborNodes;
 use core::fmt;
 use serde::{
-    de::{Error, Expected, Visitor, SeqAccess},
+    de::{Error, Expected, SeqAccess, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
@@ -47,7 +47,7 @@ impl<'de, const N: usize> Visitor<'de> for NeighborNodesVisitor<N> {
                 return Err(Error::invalid_length(
                     N + 1,
                     &NeighborNodesExpectedNum::<N>(true),
-                ))
+                ));
             }
         }
 
@@ -57,9 +57,7 @@ impl<'de, const N: usize> Visitor<'de> for NeighborNodesVisitor<N> {
                 &NeighborNodesExpectedNum::<N>(false),
             ))
         } else {
-            Ok(NeighborNodes {
-                neighbors,
-            })
+            Ok(NeighborNodes { neighbors })
         }
     }
 }
@@ -68,6 +66,11 @@ struct NeighborNodesExpectedNum<const N: usize>(bool);
 
 impl<const N: usize> Expected for NeighborNodesExpectedNum<N> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "{} elements was expected; found {}", N, if self.0 { "too many" } else { "too few" })
+        write!(
+            formatter,
+            "{} elements was expected; found {}",
+            N,
+            if self.0 { "too many" } else { "too few" }
+        )
     }
 }

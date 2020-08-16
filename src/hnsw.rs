@@ -1,6 +1,6 @@
+mod nodes;
 #[cfg(feature = "serde")]
 mod serde_impl;
-mod nodes;
 
 use nodes::*;
 
@@ -25,12 +25,7 @@ use space::{CandidatesVec, MetricPoint, Neighbor};
         deserialize = "T: Deserialize<'de>, R: Deserialize<'de>"
     ))
 )]
-pub struct HNSW<
-    T,
-    R,
-    const M: usize,
-    const M0: usize,
-> {
+pub struct HNSW<T, R, const M: usize, const M0: usize> {
     /// Contains the zero layer.
     zero: Vec<NeighborNodes<M0>>,
     /// Contains the features of the zero layer.
@@ -129,7 +124,7 @@ where
                 let node = Node {
                     zero_node: 0,
                     next_node: 0,
-                    neighbors: NeighborNodes{ neighbors: [!0; M] },
+                    neighbors: NeighborNodes { neighbors: [!0; M] },
                 };
                 self.layers.push(vec![node]);
             }
@@ -188,7 +183,7 @@ where
                     .last()
                     .map(|l| (l.len() - 1) as u32)
                     .unwrap_or(zero_node),
-                neighbors: NeighborNodes{ neighbors: [!0; M] },
+                neighbors: NeighborNodes { neighbors: [!0; M] },
             };
             self.layers.push(vec![node]);
         }
@@ -428,7 +423,7 @@ where
                 } else {
                     self.layers[layer - 2].len()
                 } as u32,
-                neighbors: NeighborNodes{ neighbors },
+                neighbors: NeighborNodes { neighbors },
             };
             for neighbor in node.neighbors() {
                 self.add_neighbor(q, new_index as u32, neighbor, layer);
@@ -485,7 +480,9 @@ where
             if layer == 0 {
                 self.zero[target_ix as usize].neighbors[worst_ix] = node_ix;
             } else {
-                self.layers[layer - 1][target_ix as usize].neighbors.neighbors[worst_ix] = node_ix;
+                self.layers[layer - 1][target_ix as usize]
+                    .neighbors
+                    .neighbors[worst_ix] = node_ix;
             }
         }
     }

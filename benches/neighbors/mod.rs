@@ -1,12 +1,12 @@
 use criterion::*;
 use hamming_heap::FixedHammingHeap;
 use hnsw::*;
+use rand_pcg::Pcg64;
 use space::*;
 use std::collections::HashMap;
 use std::io::Read;
 use std::iter::FromIterator;
 use std::rc::Rc;
-use rand_pcg::Pcg64;
 
 fn bench_neighbors(c: &mut Criterion) {
     let space_mags = 0..=20;
