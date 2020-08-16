@@ -1,10 +1,15 @@
-use crate::*;
+#[cfg(feature = "serde")]
+mod serde_impl;
+mod nodes;
 
+use nodes::*;
+
+use crate::*;
 use alloc::{vec, vec::Vec};
 use hashbrown::HashSet;
 use rand_core::{RngCore, SeedableRng};
 use rustc_hash::FxHasher;
-#[cfg(feature = "serde1")]
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use space::{CandidatesVec, MetricPoint, Neighbor};
 
@@ -13,7 +18,7 @@ use space::{CandidatesVec, MetricPoint, Neighbor};
 /// The type `T` must implement `FloatingDistance` to get implementations.
 #[derive(Clone)]
 #[cfg_attr(
-    feature = "serde1",
+    feature = "serde",
     derive(Serialize, Deserialize),
     serde(bound(
         serialize = "T: Serialize, R: Serialize",
@@ -27,7 +32,7 @@ pub struct HNSW<
     const M0: usize,
 > {
     /// Contains the zero layer.
-    zero: Vec<ZeroNode<M0>>,
+    zero: Vec<NeighborNodes<M0>>,
     /// Contains the features of the zero layer.
     /// These are stored separately to allow SIMD speedup in the future by
     /// grouping small worlds of features together.
@@ -40,41 +45,8 @@ pub struct HNSW<
     params: Params,
 }
 
-/// A node in the zero layer
-#[derive(Clone)]
-#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize), serde(bound = ""))]
-struct ZeroNode<const N: usize> {
-    /// The neighbors of this node.
-    neighbors: [u32; N],
-}
-
-impl<const N: usize> ZeroNode<N> {
-    fn neighbors<'a>(&'a self) -> impl Iterator<Item = u32> + 'a {
-        self.neighbors.iter().cloned().take_while(|&n| n != !0)
-    }
-}
-
-/// A node in any other layer other than the zero layer
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize), serde(bound = ""))]
-struct Node<const N: usize> {
-    /// The node in the zero layer this refers to.
-    zero_node: u32,
-    /// The node in the layer below this one that this node corresponds to.
-    next_node: u32,
-    /// The neighbors in the graph of this node.
-    neighbors: [u32; N],
-}
-
-impl<const N: usize> Node<N> {
-    fn neighbors<'a>(&'a self) -> impl Iterator<Item = u32> + 'a {
-        self.neighbors.iter().cloned().take_while(|&n| n != !0)
-    }
-}
-
 /// Contains all the state used when searching the HNSW
 #[derive(Clone, Debug, Default)]
-#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 pub struct Searcher {
     candidates: Vec<Neighbor>,
     nearest: CandidatesVec,
@@ -146,7 +118,7 @@ where
         // If this is empty, none of this will work, so just add it manually.
         if self.is_empty() {
             // Add the zero node unconditionally.
-            self.zero.push(ZeroNode {
+            self.zero.push(NeighborNodes {
                 neighbors: [!0; M0],
             });
             self.features.push(q);
@@ -157,7 +129,7 @@ where
                 let node = Node {
                     zero_node: 0,
                     next_node: 0,
-                    neighbors: [!0; M],
+                    neighbors: NeighborNodes{ neighbors: [!0; M] },
                 };
                 self.layers.push(vec![node]);
             }
@@ -216,7 +188,7 @@ where
                     .last()
                     .map(|l| (l.len() - 1) as u32)
                     .unwrap_or(zero_node),
-                neighbors: [!0; M],
+                neighbors: NeighborNodes{ neighbors: [!0; M] },
             };
             self.layers.push(vec![node]);
         }
@@ -438,7 +410,7 @@ where
             for (d, s) in neighbors.iter_mut().zip(nearest.iter()) {
                 *d = s.index as u32;
             }
-            let node = ZeroNode { neighbors };
+            let node = NeighborNodes { neighbors };
             for neighbor in node.neighbors() {
                 self.add_neighbor(q, new_index as u32, neighbor, layer);
             }
@@ -456,7 +428,7 @@ where
                 } else {
                     self.layers[layer - 2].len()
                 } as u32,
-                neighbors,
+                neighbors: NeighborNodes{ neighbors },
             };
             for neighbor in node.neighbors() {
                 self.add_neighbor(q, new_index as u32, neighbor, layer);
@@ -478,7 +450,7 @@ where
             let target = &self.layers[layer - 1][target_ix as usize];
             (
                 &self.features[target.zero_node as usize],
-                &target.neighbors[..],
+                &target.neighbors.neighbors[..],
             )
         };
 
@@ -513,7 +485,7 @@ where
             if layer == 0 {
                 self.zero[target_ix as usize].neighbors[worst_ix] = node_ix;
             } else {
-                self.layers[layer - 1][target_ix as usize].neighbors[worst_ix] = node_ix;
+                self.layers[layer - 1][target_ix as usize].neighbors.neighbors[worst_ix] = node_ix;
             }
         }
     }

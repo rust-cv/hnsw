@@ -4,13 +4,14 @@
 extern crate alloc;
 
 mod hnsw;
+
 pub use self::hnsw::*;
 
-#[cfg(feature = "serde1")]
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug)]
-#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Params {
     ef_construction: usize,
 }
