@@ -7,11 +7,11 @@ use core::fmt;
 #[derive(Clone)]
 pub struct NeighborNodes<const N: usize> {
     /// The neighbors of this node.
-    pub neighbors: [u32; N],
+    pub neighbors: [usize; N],
 }
 
 impl<const N: usize> NeighborNodes<N> {
-    pub fn neighbors<'a>(&'a self) -> impl Iterator<Item = u32> + 'a {
+    pub fn neighbors<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
         self.neighbors.iter().cloned().take_while(|&n| n != !0)
     }
 }
@@ -27,15 +27,15 @@ impl<const N: usize> fmt::Debug for NeighborNodes<N> {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(bound = ""))]
 pub struct Node<const N: usize> {
     /// The node in the zero layer this refers to.
-    pub zero_node: u32,
+    pub zero_node: usize,
     /// The node in the layer below this one that this node corresponds to.
-    pub next_node: u32,
+    pub next_node: usize,
     /// The neighbors in the graph of this node.
     pub neighbors: NeighborNodes<N>,
 }
 
 impl<const N: usize> Node<N> {
-    pub fn neighbors<'a>(&'a self) -> impl Iterator<Item = u32> + 'a {
+    pub fn neighbors<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
         self.neighbors.neighbors()
     }
 }

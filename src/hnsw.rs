@@ -45,7 +45,7 @@ pub struct HNSW<T, R, const M: usize, const M0: usize> {
 pub struct Searcher {
     candidates: Vec<Neighbor>,
     nearest: CandidatesVec,
-    seen: HashSet<u32, core::hash::BuildHasherDefault<FxHasher>>,
+    seen: HashSet<usize, core::hash::BuildHasherDefault<FxHasher>>,
 }
 
 impl Searcher {
@@ -106,7 +106,7 @@ where
     }
 
     /// Inserts a feature into the HNSW.
-    pub fn insert(&mut self, q: T, searcher: &mut Searcher) -> u32 {
+    pub fn insert(&mut self, q: T, searcher: &mut Searcher) -> usize {
         // Get the level of this feature.
         let level = self.random_level();
 
@@ -174,14 +174,14 @@ where
         self.features.push(q);
 
         // Add all level vectors needed to be able to add this level.
-        let zero_node = (self.zero.len() - 1) as u32;
+        let zero_node = self.zero.len() - 1;
         while self.layers.len() < level {
             let node = Node {
                 zero_node,
                 next_node: self
                     .layers
                     .last()
-                    .map(|l| (l.len() - 1) as u32)
+                    .map(|l| l.len() - 1)
                     .unwrap_or(zero_node),
                 neighbors: NeighborNodes { neighbors: [!0; M] },
             };
@@ -208,17 +208,17 @@ where
     /// Extract the feature for a given item returned by [`HNSW::nearest`].
     ///
     /// The `item` must be retrieved from [`HNSW::search_layer`].
-    pub fn feature(&self, item: u32) -> &T {
+    pub fn feature(&self, item: usize) -> &T {
         &self.features[item as usize]
     }
 
     /// Extract the feature from a particular level for a given item returned by [`HNSW::search_layer`].
-    pub fn layer_feature(&self, level: usize, item: u32) -> &T {
+    pub fn layer_feature(&self, level: usize, item: usize) -> &T {
         &self.features[self.layer_item_id(level, item) as usize]
     }
 
     /// Retrieve the item ID for a given layer item returned by [`HNSW::search_layer`].
-    pub fn layer_item_id(&self, level: usize, item: u32) -> u32 {
+    pub fn layer_item_id(&self, level: usize, item: usize) -> usize {
         if level == 0 {
             item
         } else {
@@ -392,7 +392,7 @@ where
 
     /// Generates a correctly distributed random level as per Algorithm 1 line 4 of the paper.
     fn random_level(&mut self) -> usize {
-        let uniform: f64 = self.prng.next_u32() as f64 / core::u32::MAX as f64;
+        let uniform: f64 = self.prng.next_u64() as f64 / core::u64::MAX as f64;
         (-libm::log(uniform) * libm::log(M as f64).recip()) as usize
     }
 
@@ -401,50 +401,50 @@ where
     fn create_node(&mut self, q: &T, nearest: &CandidatesVec, layer: usize) {
         if layer == 0 {
             let new_index = self.zero.len();
-            let mut neighbors: [u32; M0] = [!0; M0];
+            let mut neighbors: [usize; M0] = [!0; M0];
             for (d, s) in neighbors.iter_mut().zip(nearest.iter()) {
-                *d = s.index as u32;
+                *d = s.index as usize;
             }
             let node = NeighborNodes { neighbors };
             for neighbor in node.neighbors() {
-                self.add_neighbor(q, new_index as u32, neighbor, layer);
+                self.add_neighbor(q, new_index as usize, neighbor, layer);
             }
             self.zero.push(node);
         } else {
             let new_index = self.layers[layer - 1].len();
-            let mut neighbors: [u32; M] = [!0; M];
+            let mut neighbors: [usize; M] = [!0; M];
             for (d, s) in neighbors.iter_mut().zip(nearest.iter()) {
-                *d = s.index as u32;
+                *d = s.index;
             }
             let node = Node {
-                zero_node: self.zero.len() as u32,
+                zero_node: self.zero.len(),
                 next_node: if layer == 1 {
                     self.zero.len()
                 } else {
                     self.layers[layer - 2].len()
-                } as u32,
+                },
                 neighbors: NeighborNodes { neighbors },
             };
             for neighbor in node.neighbors() {
-                self.add_neighbor(q, new_index as u32, neighbor, layer);
+                self.add_neighbor(q, new_index, neighbor, layer);
             }
             self.layers[layer - 1].push(node);
         }
     }
 
     /// Attempts to add a neighbor to a target node.
-    fn add_neighbor(&mut self, q: &T, node_ix: u32, target_ix: u32, layer: usize) {
+    fn add_neighbor(&mut self, q: &T, node_ix: usize, target_ix: usize, layer: usize) {
         // Get the feature for the target and get the neighbor slice for the target.
         // This is different for the zero layer.
         let (target_feature, target_neighbors) = if layer == 0 {
             (
-                &self.features[target_ix as usize],
-                &self.zero[target_ix as usize].neighbors[..],
+                &self.features[target_ix],
+                &self.zero[target_ix].neighbors[..],
             )
         } else {
-            let target = &self.layers[layer - 1][target_ix as usize];
+            let target = &self.layers[layer - 1][target_ix];
             (
-                &self.features[target.zero_node as usize],
+                &self.features[target.zero_node],
                 &target.neighbors.neighbors[..],
             )
         };
@@ -462,9 +462,9 @@ where
                     T::distance(
                         target_feature,
                         &self.features[if layer == 0 {
-                            n as usize
+                            n
                         } else {
-                            self.layers[layer - 1][n as usize].zero_node as usize
+                            self.layers[layer - 1][n].zero_node
                         }],
                     )
                 };

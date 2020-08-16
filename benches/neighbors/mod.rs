@@ -9,7 +9,7 @@ use std::iter::FromIterator;
 use std::rc::Rc;
 
 fn bench_neighbors(c: &mut Criterion) {
-    let space_mags = 0..=20;
+    let space_mags = 0..=16;
     let all_sizes = (space_mags).map(|n| 2usize.pow(n));
     let filepath = "data/akaze";
     let total_descriptors = all_sizes.clone().rev().next().unwrap();
