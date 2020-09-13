@@ -1,6 +1,6 @@
 //! Useful tests for debugging since they are hand-written and easy to see the debugging output.
 
-use hnsw::{Searcher, HNSW};
+use hnsw::{Hnsw, Searcher};
 use rand_pcg::Pcg64;
 use space::{MetricPoint, Neighbor};
 
@@ -19,9 +19,9 @@ impl MetricPoint for Euclidean {
     }
 }
 
-fn test_hnsw() -> (HNSW<Euclidean, Pcg64, 12, 24>, Searcher) {
+fn test_hnsw() -> (Hnsw<Euclidean, Pcg64, 12, 24>, Searcher) {
     let mut searcher = Searcher::default();
-    let mut hnsw = HNSW::new();
+    let mut hnsw = Hnsw::new();
 
     let features = [
         &[0.0, 0.0, 0.0, 1.0],

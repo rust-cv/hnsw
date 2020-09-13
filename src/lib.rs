@@ -1,11 +1,15 @@
-#![allow(incomplete_features)]
-#![feature(const_generics)]
+#![feature(min_const_generics)]
 #![no_std]
 extern crate alloc;
 
 mod hnsw;
 
 pub use self::hnsw::*;
+
+use alloc::vec::Vec;
+use hashbrown::HashSet;
+use rustc_hash::FxHasher;
+use space::{CandidatesVec, Neighbor};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -40,5 +44,25 @@ impl Default for Params {
         Self {
             ef_construction: 400,
         }
+    }
+}
+
+/// Contains all the state used when searching the HNSW
+#[derive(Clone, Debug, Default)]
+pub struct Searcher {
+    candidates: Vec<Neighbor>,
+    nearest: CandidatesVec,
+    seen: HashSet<usize, core::hash::BuildHasherDefault<FxHasher>>,
+}
+
+impl Searcher {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    fn clear(&mut self) {
+        self.candidates.clear();
+        self.nearest.clear();
+        self.seen.clear();
     }
 }

@@ -65,7 +65,7 @@ fn bench_neighbors(c: &mut Criterion) {
     let hnsw_map = Rc::new(HashMap::<_, _>::from_iter(all_sizes.clone().map(|total| {
         eprintln!("Generating HNSW size {}...", total);
         let range = 0..total;
-        let mut hnsw: HNSW<Hamming<Bits256>, Pcg64, 12, 24> = HNSW::new();
+        let mut hnsw: Hnsw<Hamming<Bits256>, Pcg64, 12, 24> = Hnsw::new();
         let mut searcher = Searcher::default();
         for i in range.clone() {
             hnsw.insert(search_space[i], &mut searcher);

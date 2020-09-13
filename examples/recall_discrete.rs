@@ -1,5 +1,4 @@
-#![allow(incomplete_features)]
-#![feature(const_generics)]
+#![feature(min_const_generics)]
 
 use byteorder::{ByteOrder, NativeEndian};
 use gnuplot::*;
@@ -115,7 +114,6 @@ fn process<T: MetricPoint + Clone, const M: usize, const M0: usize>(
         eprintln!("Generating {} random bitstrings...", opt.size);
         let search_space: Vec<T> = rng
             .sample_iter(&Standard)
-            .map(|n: u8| n)
             .chunks(64)
             .into_iter()
             .map(|bs| conv(&bs.collect::<Vec<u8>>()))
@@ -132,7 +130,6 @@ fn process<T: MetricPoint + Clone, const M: usize, const M0: usize>(
         );
         let query_strings: Vec<T> = rng
             .sample_iter(&Standard)
-            .map(|n: u8| n)
             .chunks(64)
             .into_iter()
             .map(|bs| conv(&bs.collect::<Vec<u8>>()))
@@ -165,8 +162,8 @@ fn process<T: MetricPoint + Clone, const M: usize, const M0: usize>(
     eprintln!("Done.");
 
     eprintln!("Generating HNSW...");
-    let mut hnsw: HNSW<T, Pcg64, M, M0> =
-        HNSW::new_params(Params::new().ef_construction(opt.ef_construction));
+    let mut hnsw: Hnsw<T, Pcg64, M, M0> =
+        Hnsw::new_params(Params::new().ef_construction(opt.ef_construction));
     let mut searcher: Searcher = Searcher::default();
     for feature in &search_space {
         hnsw.insert(feature.clone(), &mut searcher);

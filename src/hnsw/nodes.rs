@@ -1,10 +1,9 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-
-use core::fmt;
+use smallvec::SmallVec;
 
 /// A node in the zero layer
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NeighborNodes<const N: usize> {
     /// The neighbors of this node.
     pub neighbors: [usize; N],
@@ -13,12 +12,6 @@ pub struct NeighborNodes<const N: usize> {
 impl<const N: usize> NeighborNodes<N> {
     pub fn neighbors<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
         self.neighbors.iter().cloned().take_while(|&n| n != !0)
-    }
-}
-
-impl<const N: usize> fmt::Debug for NeighborNodes<N> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.neighbors.fmt(f)
     }
 }
 
@@ -38,4 +31,11 @@ impl<const N: usize> Node<N> {
     pub fn neighbors<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
         self.neighbors.neighbors()
     }
+}
+
+/// The inbound nodes that are pointing to this node.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(bound = ""))]
+pub struct InboundNodes<const N: usize> {
+    pub neighbors: SmallVec<[usize; N]>,
 }

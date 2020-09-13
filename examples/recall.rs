@@ -1,5 +1,4 @@
-#![allow(incomplete_features)]
-#![feature(const_generics)]
+#![feature(min_const_generics)]
 
 use byteorder::{ByteOrder, LittleEndian};
 use gnuplot::*;
@@ -186,8 +185,8 @@ fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
     eprintln!("Done.");
 
     eprintln!("Generating HNSW...");
-    let mut hnsw: HNSW<_, Pcg64, M, M0> =
-        HNSW::new_params(Params::new().ef_construction(opt.ef_construction));
+    let mut hnsw: Hnsw<_, Pcg64, M, M0> =
+        Hnsw::new_params(Params::new().ef_construction(opt.ef_construction));
     let mut searcher: Searcher = Searcher::default();
     for feature in &search_space {
         hnsw.insert(feature.clone(), &mut searcher);
