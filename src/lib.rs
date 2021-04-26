@@ -1,4 +1,3 @@
-#![feature(min_const_generics)]
 #![no_std]
 extern crate alloc;
 

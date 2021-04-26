@@ -1,5 +1,3 @@
-#![feature(min_const_generics)]
-
 use byteorder::{ByteOrder, LittleEndian};
 use gnuplot::*;
 use hnsw::*;

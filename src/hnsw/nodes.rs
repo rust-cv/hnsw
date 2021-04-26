@@ -10,7 +10,7 @@ pub struct NeighborNodes<const N: usize> {
 }
 
 impl<const N: usize> NeighborNodes<N> {
-    pub fn neighbors<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
+    pub fn neighbors(&self) -> impl Iterator<Item = usize> + '_ {
         self.neighbors.iter().cloned().take_while(|&n| n != !0)
     }
 }
@@ -28,7 +28,7 @@ pub struct Node<const N: usize> {
 }
 
 impl<const N: usize> Node<N> {
-    pub fn neighbors<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
+    pub fn neighbors(&self) -> impl Iterator<Item = usize> + '_ {
         self.neighbors.neighbors()
     }
 }
