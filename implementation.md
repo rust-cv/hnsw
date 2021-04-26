@@ -1,6 +1,6 @@
 # Implementation
 
-HNSW is an algorithm that creates layers of NSW graphs where the top layer is least refined and the "zero layer" is the most refined. The graph nodes are items from the search set in all cases and `M` edges are chosen by finding the `M` nearest-neighbors according to the graph's ANN search. The authors of HSNW probabalistically select which items from the search set to include in each graph layer and below to maintain global connectivity. This is effectively combining the concept of skip lists with NSW.
+HNSW is an algorithm that creates layers of NSW graphs where the top layer is least refined and the "zero layer" is the most refined. The graph nodes are items from the search set in all cases and `M` edges are chosen by finding the `M` nearest-neighbors according to the graph's ANN search. The authors of HNSW probabalistically select which items from the search set to include in each graph layer and below to maintain global connectivity. This is effectively combining the concept of skip lists with NSW.
 
 The authors define some parameters:
 
