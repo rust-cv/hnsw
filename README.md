@@ -110,7 +110,7 @@ use space::MetricPoint;
 struct Euclidean<'a>(&'a [f32]);
 
 impl MetricPoint for Euclidean<'_> {
-    fn distance(&self, rhs: &Self) -> u32 {
+    fn distance(&self, rhs: &Self) -> u64 {
         space::f32_metric(
             self.0
                 .iter()
