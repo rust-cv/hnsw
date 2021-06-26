@@ -20,17 +20,23 @@ Hierarchical Navigable Small World Graph for fast ANN search
 
 Enable the `serde` feature to serialize and deserialize `HNSW`.
 
+## Tips
+
+A good default for M and M0 parameters is 12 and 24 respectively. According to the paper, M0 should always be double M,
+but you can change both of them freely.
+
 ## Example
 
 ### Binary feature search using hamming distance
 
 ```rust
-use hnsw::{Searcher, HNSW};
+use hnsw::{Searcher, Hnsw};
 use space::{Hamming, Neighbor};
+use rand_pcg::Pcg64;
 
 fn main() {
     let mut searcher = Searcher::default();
-    let mut hnsw: HNSW<Hamming<u128>> = HNSW::new();
+    let mut hnsw: Hnsw<Hamming<u128>, Pcg64, 12, 24> = Hnsw::new();
 
     let features = [
         0b0001, 0b0010, 0b0100, 0b1000, 0b0011, 0b0110, 0b1100, 0b1001,
@@ -100,6 +106,7 @@ Please refer to the [`space` documentation](https://docs.rs/space/) for the trai
 An implementation is currently not provided for euclidean distance after a recent refactor. Hamming distance was more relevant at the time, and so that was prioritized. To implement euclidean distance, do something roughly like the following:
 
 ```rust
+use space::MetricPoint;
 struct Euclidean<'a>(&'a [f32]);
 
 impl MetricPoint for Euclidean<'_> {
