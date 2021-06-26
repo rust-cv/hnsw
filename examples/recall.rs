@@ -15,7 +15,7 @@ use structopt::StructOpt;
 struct Euclidean<'a>(&'a [f32]);
 
 impl MetricPoint for Euclidean<'_> {
-    fn distance(&self, rhs: &Self) -> u32 {
+    fn distance(&self, rhs: &Self) -> u64 {
         space::f32_metric(
             self.0
                 .iter()
@@ -164,7 +164,7 @@ fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
         "Computing the correct nearest neighbor distance for all {} queries...",
         opt.num_queries
     );
-    let correct_worst_distances: Vec<u32> = query_strings
+    let correct_worst_distances: Vec<u64> = query_strings
         .iter()
         .cloned()
         .map(|feature| {

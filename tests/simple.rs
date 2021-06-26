@@ -4,16 +4,16 @@ use hnsw::{Hnsw, Searcher};
 use rand_pcg::Pcg64;
 use space::{MetricPoint, Neighbor};
 
-struct Euclidean(&'static [f32]);
+struct Euclidean(&'static [f64]);
 
 impl MetricPoint for Euclidean {
-    fn distance(&self, rhs: &Self) -> u32 {
-        space::f32_metric(
+    fn distance(&self, rhs: &Self) -> u64 {
+        space::f64_metric(
             self.0
                 .iter()
                 .zip(rhs.0.iter())
                 .map(|(&a, &b)| (a - b).powi(2))
-                .sum::<f32>()
+                .sum::<f64>()
                 .sqrt(),
         )
     }
@@ -73,31 +73,31 @@ fn nearest_neighbor() {
             },
             Neighbor {
                 index: 4,
-                distance: 1_065_353_216
+                distance: 1072693248
             },
             Neighbor {
                 index: 7,
-                distance: 1_065_353_216
+                distance: 1072693248
             },
             Neighbor {
                 index: 1,
-                distance: 1_068_827_891
+                distance: 1073127582
             },
             Neighbor {
                 index: 2,
-                distance: 1_068_827_891
+                distance: 1073127582
             },
             Neighbor {
                 index: 3,
-                distance: 1_068_827_891
+                distance: 1073127582
             },
             Neighbor {
                 index: 5,
-                distance: 1_071_494_103
+                distance: 1073460858
             },
             Neighbor {
                 index: 6,
-                distance: 1_071_494_103
+                distance: 1073460858
             }
         ]
     );

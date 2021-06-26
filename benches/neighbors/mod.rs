@@ -111,7 +111,7 @@ fn bench_neighbors(c: &mut Criterion) {
                         nearest.clear();
                         let search_feature = cycle_range.next().unwrap();
                         for (ix, feature) in search_space[0..size].iter().enumerate() {
-                            nearest.push(search_feature.distance(feature), ix as u32);
+                            nearest.push(search_feature.distance(feature) as u32, ix as u32);
                         }
                         nearest.len()
                     })
@@ -150,7 +150,7 @@ fn bench_neighbors(c: &mut Criterion) {
                         nearest.clear();
                         let search_feature = cycle_range.next().unwrap();
                         for (ix, feature) in search_space[0..size].iter().enumerate() {
-                            nearest.push(search_feature.distance(feature), ix as u32);
+                            nearest.push(search_feature.distance(feature) as u32, ix as u32);
                         }
                         nearest.len()
                     })

@@ -425,7 +425,7 @@ where
             .map(|(ix, &n)| {
                 // Compute the distance to be higher than possible if the neighbor is not filled yet so its always filled.
                 let distance = if n == !0 {
-                    core::u32::MAX
+                    core::u64::MAX
                 } else {
                     // Compute the distance. The feature is looked up differently for the zero layer.
                     T::distance(

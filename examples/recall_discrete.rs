@@ -141,7 +141,7 @@ fn process<T: MetricPoint + Clone, const M: usize, const M0: usize>(
         "Computing the correct nearest neighbor distance for all {} queries...",
         opt.num_queries
     );
-    let correct_worst_distances: Vec<u32> = query_strings
+    let correct_worst_distances: Vec<u64> = query_strings
         .iter()
         .cloned()
         .map(|feature| {
