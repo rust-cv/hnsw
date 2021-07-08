@@ -30,28 +30,48 @@ but you can change both of them freely.
 ### Binary feature search using hamming distance
 
 ```rust
-use hnsw::{Searcher, Hnsw};
-use space::{Hamming, Neighbor};
+use hnsw::{Hnsw, Searcher};
 use rand_pcg::Pcg64;
+use space::{MetricPoint, Neighbor};
 
-fn main() {
+struct Hamming(u8);
+
+impl MetricPoint for Hamming {
+    type Metric = u8;
+
+    fn distance(&self, other: &Self) -> u8 {
+        (self.0 ^ other.0).count_ones() as u8
+    }
+}
+
+fn test_hnsw_discrete() -> (Hnsw<Hamming, Pcg64, 12, 24>, Searcher<u8>) {
     let mut searcher = Searcher::default();
-    let mut hnsw: Hnsw<Hamming<u128>, Pcg64, 12, 24> = Hnsw::new();
+    let mut hnsw = Hnsw::new();
 
     let features = [
         0b0001, 0b0010, 0b0100, 0b1000, 0b0011, 0b0110, 0b1100, 0b1001,
     ];
 
-    // Insert all features. A searcher data structure is used to avoid performing
-    // memory allocations every insertion and search. Reuse searchers for speed.
     for &feature in &features {
         hnsw.insert(Hamming(feature), &mut searcher);
     }
 
-    // Allocate an array to store nearest neighbors.
-    let mut neighbors = [Neighbor::invalid(); 8];
-    // Pass the whole neighbors array as a slice. It will attempt to fill the whole array
-    // with nearest neighbors from nearest to furthest.
+    (hnsw, searcher)
+}
+
+#[test]
+fn insertion_discrete() {
+    test_hnsw_discrete();
+}
+
+#[test]
+fn nearest_neighbor_discrete() {
+    let (hnsw, mut searcher) = test_hnsw_discrete();
+    let mut neighbors = [Neighbor {
+        index: !0,
+        distance: !0,
+    }; 8];
+
     hnsw.nearest(&Hamming(0b0001), 24, &mut searcher, &mut neighbors);
     // Distance 1
     neighbors[1..3].sort_unstable();
@@ -110,20 +130,19 @@ use space::MetricPoint;
 struct Euclidean<'a>(&'a [f32]);
 
 impl MetricPoint for Euclidean<'_> {
+    type Metric = u32;
     fn distance(&self, rhs: &Self) -> u64 {
-        space::f32_metric(
-            self.0
-                .iter()
-                .zip(rhs.0.iter())
-                .map(|(&a, &b)| (a - b).powi(2))
-                .sum::<f32>()
-                .sqrt(),
-        )
+        self.0
+            .iter()
+            .zip(rhs.0.iter())
+            .map(|(&a, &b)| (a - b).powi(2))
+            .sum::<f32>()
+            .sqrt().to_bits()
     }
 }
 ```
 
-Note that the above implementation may have some numerical error on high dimensionality. In that case use a [Kahan sum](https://en.wikipedia.org/wiki/Kahan_summation_algorithm) instead.
+Note that the above implementation may have some numerical error on high dimensionality. In that case use a [Kahan sum](https://en.wikipedia.org/wiki/Kahan_summation_algorithm) instead. It also may not utilize SIMD, but using an array may help with that.
 
 ## Benchmarks
 
