@@ -6,7 +6,7 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use rand_core::SeedableRng;
 use rand_pcg::Pcg64;
-use space::{Hamming, Neighbor};
+use space::{Bits128, MetricPoint, Neighbor};
 
 // This can be adjusted lower if it is too slow.
 const SEARCH_SPACE_SIZE: usize = 1 << 10;
@@ -15,18 +15,19 @@ const SEARCH_SPACE_SIZE: usize = 1 << 10;
 fn linear_1_nn() {
     let mut searcher = Searcher::default();
     let searcher = &mut searcher;
-    let mut hnsw: Hnsw<Hamming<u128>, Pcg64, 12, 24> = Hnsw::new();
-    let mut output = [Neighbor::invalid(); 1];
+    let mut hnsw: Hnsw<Bits128, Pcg64, 12, 24> = Hnsw::new();
+    let mut output = [Neighbor {
+        index: !0,
+        distance: !0,
+    }; 1];
 
     let prng = Pcg64::from_seed([5; 32]);
-    let mut rngiter = prng.sample_iter(&Standard);
-    let space = (&mut rngiter)
-        .take(SEARCH_SPACE_SIZE)
-        .collect::<Vec<u128>>();
-    let search = (&mut rngiter).take(100).collect::<Vec<u128>>();
+    let mut rngiter = prng.sample_iter(&Standard).map(Bits128);
+    let space = (&mut rngiter).take(SEARCH_SPACE_SIZE).collect::<Vec<_>>();
+    let search = (&mut rngiter).take(100).collect::<Vec<_>>();
 
     for &feature in &space {
-        hnsw.insert(Hamming(feature), searcher);
+        hnsw.insert(feature, searcher);
     }
 
     let mut pass = 0;
@@ -36,18 +37,18 @@ fn linear_1_nn() {
         let nearest = space
             .iter()
             .enumerate()
-            .min_by_key(|(_, &space_feature)| (feature ^ space_feature).count_ones())
+            .min_by_key(|(_, &space_feature)| feature.distance(&space_feature))
             .unwrap();
         // Use HNSW to find the nearest neighbor.
-        hnsw.nearest(&Hamming(feature), 24, searcher, &mut output);
+        hnsw.nearest(&feature, 24, searcher, &mut output);
         // Get their respective found features.
         let linear = *nearest.1;
         let hnsw = space[output[0].index];
-        eprintln!("{:0128b}", linear);
-        eprintln!("{:0128b}", hnsw);
-        eprintln!("linear distance: {}", (linear ^ feature).count_ones());
-        eprintln!("hnsw distance: {}", (hnsw ^ feature).count_ones());
-        if (linear ^ feature).count_ones() == (hnsw ^ feature).count_ones() {
+        eprintln!("{:?}", linear);
+        eprintln!("{:?}", hnsw);
+        eprintln!("linear distance: {}", linear.distance(&feature));
+        eprintln!("hnsw distance: {}", hnsw.distance(&feature));
+        if linear.distance(&feature) == hnsw.distance(&feature) {
             pass += 1;
         }
     }
@@ -61,16 +62,20 @@ fn linear_1_nn() {
 fn linear_1_nn_inliers() {
     let mut searcher = Searcher::default();
     let searcher = &mut searcher;
-    let mut hnsw: Hnsw<Hamming<u128>, Pcg64, 12, 24> = Hnsw::new();
-    let mut output = [Neighbor::invalid(); 1];
+    let mut hnsw: Hnsw<Bits128, Pcg64, 12, 24> = Hnsw::new();
+    let mut output = [Neighbor {
+        index: !0,
+        distance: !0,
+    }; 1];
 
     const BIT_DIFF_PROBABILITY_OF_INLIER: f64 = 0.0859;
 
     let prng = Pcg64::from_seed([5; 32]);
     let space = prng
         .sample_iter(&Standard)
+        .map(Bits128)
         .take(SEARCH_SPACE_SIZE)
-        .collect::<Vec<u128>>();
+        .collect::<Vec<_>>();
     let mut prng_elem_chooser = Pcg64::from_seed([6; 32]);
     let mut prng_bit_chooser = Pcg64::from_seed([7; 32]);
     let bernoulli = Bernoulli::new(BIT_DIFF_PROBABILITY_OF_INLIER).unwrap();
@@ -80,14 +85,14 @@ fn linear_1_nn_inliers() {
         .map(|mut feature| {
             for bit in 0..128 {
                 let choice: bool = prng_bit_chooser.sample(&bernoulli);
-                feature ^= (choice as u128) << bit;
+                feature[bit / 8] ^= (choice as u8) << (bit % 8);
             }
             feature
         })
-        .collect::<Vec<u128>>();
+        .collect::<Vec<_>>();
 
     for &feature in &space {
-        hnsw.insert(Hamming(feature), searcher);
+        hnsw.insert(feature, searcher);
     }
 
     let mut pass = 0;
@@ -97,18 +102,18 @@ fn linear_1_nn_inliers() {
         let nearest = space
             .iter()
             .enumerate()
-            .min_by_key(|(_, &space_feature)| (feature ^ space_feature).count_ones())
+            .min_by_key(|(_, &space_feature)| feature.distance(&space_feature))
             .unwrap();
         // Use HNSW to find the nearest neighbor.
-        hnsw.nearest(&Hamming(feature), 24, searcher, &mut output);
+        hnsw.nearest(&feature, 24, searcher, &mut output);
         // Get their respective found features.
         let linear = *nearest.1;
         let hnsw = space[output[0].index];
-        eprintln!("{:0128b}", linear);
-        eprintln!("{:0128b}", hnsw);
-        eprintln!("linear distance: {}", (linear ^ feature).count_ones());
-        eprintln!("hnsw distance: {}", (hnsw ^ feature).count_ones());
-        if (linear ^ feature).count_ones() == (hnsw ^ feature).count_ones() {
+        eprintln!("{:?}", linear);
+        eprintln!("{:?}", hnsw);
+        eprintln!("linear distance: {}", linear.distance(&feature));
+        eprintln!("hnsw distance: {}", hnsw.distance(&feature));
+        if linear.distance(&feature) == hnsw.distance(&feature) {
             pass += 1;
         }
     }

@@ -5,10 +5,10 @@ mod hnsw;
 
 pub use self::hnsw::*;
 
-use alloc::vec::Vec;
+use ahash::RandomState;
+use alloc::{vec, vec::Vec};
 use hashbrown::HashSet;
-use rustc_hash::FxHasher;
-use space::{CandidatesVec, Neighbor};
+use space::Neighbor;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -47,14 +47,14 @@ impl Default for Params {
 }
 
 /// Contains all the state used when searching the HNSW
-#[derive(Clone, Debug, Default)]
-pub struct Searcher {
-    candidates: Vec<Neighbor>,
-    nearest: CandidatesVec,
-    seen: HashSet<usize, core::hash::BuildHasherDefault<FxHasher>>,
+#[derive(Clone, Debug)]
+pub struct Searcher<Metric> {
+    candidates: Vec<Neighbor<Metric>>,
+    nearest: Vec<Neighbor<Metric>>,
+    seen: HashSet<usize, RandomState>,
 }
 
-impl Searcher {
+impl<Metric> Searcher<Metric> {
     pub fn new() -> Self {
         Default::default()
     }
@@ -63,5 +63,15 @@ impl Searcher {
         self.candidates.clear();
         self.nearest.clear();
         self.seen.clear();
+    }
+}
+
+impl<Metric> Default for Searcher<Metric> {
+    fn default() -> Self {
+        Self {
+            candidates: vec![],
+            nearest: vec![],
+            seen: HashSet::with_hasher(RandomState::with_seeds(0, 0, 0, 0)),
+        }
     }
 }

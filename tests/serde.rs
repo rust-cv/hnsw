@@ -2,9 +2,21 @@
 
 use hnsw::{Hnsw, Searcher};
 use rand_pcg::Pcg64;
-use space::{Hamming, Neighbor};
+use serde::{Deserialize, Serialize};
+use space::{MetricPoint, Neighbor};
 
-fn test_hnsw_discrete() -> (Hnsw<Hamming<u128>, Pcg64, 12, 24>, Searcher) {
+#[derive(Serialize, Deserialize)]
+struct Hamming(u8);
+
+impl MetricPoint for Hamming {
+    type Metric = u8;
+
+    fn distance(&self, other: &Self) -> u8 {
+        (self.0 ^ other.0).count_ones() as u8
+    }
+}
+
+fn test_hnsw_discrete() -> (Hnsw<Hamming, Pcg64, 12, 24>, Searcher<u8>) {
     let mut searcher = Searcher::default();
     let mut hnsw = Hnsw::new();
 
@@ -23,9 +35,12 @@ fn test_hnsw_discrete() -> (Hnsw<Hamming<u128>, Pcg64, 12, 24>, Searcher) {
 fn serde() {
     let (hnsw_unser, mut searcher) = test_hnsw_discrete();
     let hnsw_str = serde_json::to_string(&hnsw_unser).expect("failed to serialize hnsw");
-    let hnsw: Hnsw<Hamming<u128>, Pcg64, 12, 24> =
+    let hnsw: Hnsw<Hamming, Pcg64, 12, 24> =
         serde_json::from_str(&hnsw_str).expect("failed to deserialize hnsw");
-    let mut neighbors = [Neighbor::invalid(); 8];
+    let mut neighbors = [Neighbor {
+        index: !0,
+        distance: !0,
+    }; 8];
 
     hnsw.nearest(&Hamming(0b0001), 24, &mut searcher, &mut neighbors);
     // Distance 1

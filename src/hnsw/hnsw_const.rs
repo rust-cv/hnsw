@@ -4,7 +4,7 @@ use alloc::{vec, vec::Vec};
 use rand_core::{RngCore, SeedableRng};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use space::{CandidatesVec, MetricPoint, Neighbor};
+use space::{MetricPoint, Neighbor};
 
 /// This provides a HNSW implementation for any distance function.
 ///
@@ -79,9 +79,14 @@ where
     }
 
     /// Inserts a feature into the HNSW.
-    pub fn insert(&mut self, q: T, searcher: &mut Searcher) -> usize {
+    pub fn insert(&mut self, q: T, searcher: &mut Searcher<T::Metric>) -> usize {
         // Get the level of this feature.
         let level = self.random_level();
+        let mut cap = if level >= self.layers.len() {
+            self.params.ef_construction
+        } else {
+            1
+        };
 
         // If this is empty, none of this will work, so just add it manually.
         if self.is_empty() {
@@ -104,44 +109,34 @@ where
             return 0;
         }
 
-        self.initialize_searcher(
-            &q,
-            searcher,
-            if level >= self.layers.len() {
-                self.params.ef_construction
-            } else {
-                1
-            },
-        );
+        self.initialize_searcher(&q, searcher);
 
         // Find the entry point on the level it was created by searching normally until its level.
         for ix in (level..self.layers.len()).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_single_layer(&q, searcher, &self.layers[ix]);
+            self.search_single_layer(&q, searcher, &self.layers[ix], cap);
             // Then lower the search only after we create the node.
-            self.lower_search(
-                &self.layers[ix],
-                searcher,
-                if ix == level {
-                    self.params.ef_construction
-                } else {
-                    1
-                },
-            );
+            self.lower_search(&self.layers[ix], searcher);
+            cap = if ix == level {
+                self.params.ef_construction
+            } else {
+                1
+            };
         }
 
         // Then start from its level and connect it to its nearest neighbors.
         for ix in (0..core::cmp::min(level, self.layers.len())).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_single_layer(&q, searcher, &self.layers[ix]);
+            self.search_single_layer(&q, searcher, &self.layers[ix], cap);
             // Then use the results of that search on this layer to connect the nodes.
             self.create_node(&q, &searcher.nearest, ix + 1);
             // Then lower the search only after we create the node.
-            self.lower_search(&self.layers[ix], searcher, self.params.ef_construction);
+            self.lower_search(&self.layers[ix], searcher);
+            cap = self.params.ef_construction;
         }
 
         // Also search and connect the node to the zero layer.
-        self.search_zero_layer(&q, searcher);
+        self.search_zero_layer(&q, searcher, cap);
         self.create_node(&q, &searcher.nearest, 0);
         // Add the feature to the zero layer.
         self.features.push(q);
@@ -168,9 +163,9 @@ where
         &self,
         q: &T,
         ef: usize,
-        searcher: &mut Searcher,
-        dest: &'a mut [Neighbor],
-    ) -> &'a mut [Neighbor] {
+        searcher: &mut Searcher<T::Metric>,
+        dest: &'a mut [Neighbor<T::Metric>],
+    ) -> &'a mut [Neighbor<T::Metric>] {
         self.search_layer(q, ef, 0, searcher, dest)
     }
 
@@ -231,32 +226,45 @@ where
         q: &T,
         ef: usize,
         level: usize,
-        searcher: &mut Searcher,
-        dest: &'a mut [Neighbor],
-    ) -> &'a mut [Neighbor] {
+        searcher: &mut Searcher<T::Metric>,
+        dest: &'a mut [Neighbor<T::Metric>],
+    ) -> &'a mut [Neighbor<T::Metric>] {
         // If there is nothing in here, then just return nothing.
         if self.features.is_empty() || level >= self.layers() {
             return &mut [];
         }
 
-        self.initialize_searcher(q, searcher, if self.layers.is_empty() { ef } else { 1 });
+        self.initialize_searcher(q, searcher);
+        let cap = 1;
 
         for (ix, layer) in self.layers.iter().enumerate().rev() {
-            self.search_single_layer(q, searcher, layer);
+            self.search_single_layer(q, searcher, layer, cap);
             if ix + 1 == level {
-                return searcher.nearest.fill_slice(dest);
+                let found = core::cmp::min(dest.len(), searcher.nearest.len());
+                dest.copy_from_slice(&searcher.nearest[..found]);
+                return &mut dest[..found];
             }
-            self.lower_search(layer, searcher, if ix == 0 { ef } else { 1 });
+            self.lower_search(layer, searcher);
         }
 
-        self.search_zero_layer(q, searcher);
+        let cap = ef;
 
-        searcher.nearest.fill_slice(dest)
+        self.search_zero_layer(q, searcher, cap);
+
+        let found = core::cmp::min(dest.len(), searcher.nearest.len());
+        dest.copy_from_slice(&searcher.nearest[..found]);
+        &mut dest[..found]
     }
 
     /// Greedily finds the approximate nearest neighbors to `q` in a non-zero layer.
     /// This corresponds to Algorithm 2 in the paper.
-    fn search_single_layer(&self, q: &T, searcher: &mut Searcher, layer: &[Node<M>]) {
+    fn search_single_layer(
+        &self,
+        q: &T,
+        searcher: &mut Searcher<T::Metric>,
+        layer: &[Node<M>],
+        cap: usize,
+    ) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
             for neighbor in layer[index as usize].neighbors() {
                 let neighbor_node = &layer[neighbor as usize];
@@ -267,12 +275,19 @@ where
                     // Compute the distance of this neighbor.
                     let distance = T::distance(q, &self.features[neighbor_node.zero_node as usize]);
                     // Attempt to insert into nearest queue.
-                    let candidate = Neighbor {
-                        index: neighbor as usize,
-                        distance,
-                    };
-                    if searcher.nearest.push(candidate) {
-                        // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
+                    let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
+                    if pos != cap {
+                        // It was successful. Now we need to know if its full.
+                        if searcher.nearest.len() == cap {
+                            // In this case remove the worst item.
+                            searcher.nearest.pop();
+                        }
+                        // Either way, add the new item.
+                        let candidate = Neighbor {
+                            index: neighbor as usize,
+                            distance,
+                        };
+                        searcher.nearest.insert(pos, candidate);
                         searcher.candidates.push(candidate);
                     }
                 }
@@ -281,7 +296,7 @@ where
     }
 
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
-    fn search_zero_layer(&self, q: &T, searcher: &mut Searcher) {
+    fn search_zero_layer(&self, q: &T, searcher: &mut Searcher<T::Metric>, cap: usize) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
             for neighbor in self.zero[index as usize].neighbors() {
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
@@ -291,12 +306,19 @@ where
                     // Compute the distance of this neighbor.
                     let distance = T::distance(q, &self.features[neighbor as usize]);
                     // Attempt to insert into nearest queue.
-                    let candidate = Neighbor {
-                        index: neighbor as usize,
-                        distance,
-                    };
-                    if searcher.nearest.push(candidate) {
-                        // If inserting into the nearest queue was sucessful, we want to add this node to the candidates.
+                    let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
+                    if pos != cap {
+                        // It was successful. Now we need to know if its full.
+                        if searcher.nearest.len() == cap {
+                            // In this case remove the worst item.
+                            searcher.nearest.pop();
+                        }
+                        // Either way, add the new item.
+                        let candidate = Neighbor {
+                            index: neighbor as usize,
+                            distance,
+                        };
+                        searcher.nearest.insert(pos, candidate);
                         searcher.candidates.push(candidate);
                     }
                 }
@@ -307,15 +329,13 @@ where
     /// Ready a search for the next level down.
     ///
     /// `m` is the maximum number of nearest neighbors to consider during the search.
-    fn lower_search(&self, layer: &[Node<M>], searcher: &mut Searcher, m: usize) {
+    fn lower_search(&self, layer: &[Node<M>], searcher: &mut Searcher<T::Metric>) {
         // Clear the candidates so we can fill them with the best nodes in the last layer.
         searcher.candidates.clear();
         // Only preserve the best candidate. The original paper's algorithm uses `1` every time.
         // See Algorithm 5 line 5 of the paper. The paper makes no further comment on why `1` was chosen.
-        let Neighbor { index, distance } = searcher.nearest.best().unwrap();
+        let &Neighbor { index, distance } = searcher.nearest.first().unwrap();
         searcher.nearest.clear();
-        // Set the capacity on the nearest to `m`.
-        searcher.nearest.set_cap(m);
         // Update the node to the next layer.
         let new_index = layer[index].next_node as usize;
         let candidate = Neighbor {
@@ -330,10 +350,9 @@ where
 
     /// Resets a searcher, but does not set the `cap` on the nearest neighbors.
     /// Must be passed the query element `q`.
-    fn initialize_searcher(&self, q: &T, searcher: &mut Searcher, cap: usize) {
+    fn initialize_searcher(&self, q: &T, searcher: &mut Searcher<T::Metric>) {
         // Clear the searcher.
         searcher.clear();
-        searcher.nearest.set_cap(cap);
         // Add the entry point.
         let entry_distance = T::distance(q, self.entry_feature());
         let candidate = Neighbor {
@@ -367,7 +386,7 @@ where
 
     /// Creates a new node at a layer given its nearest neighbors in that layer.
     /// This contains Algorithm 3 from the paper, but also includes some additional logic.
-    fn create_node(&mut self, q: &T, nearest: &CandidatesVec, layer: usize) {
+    fn create_node(&mut self, q: &T, nearest: &[Neighbor<T::Metric>], layer: usize) {
         if layer == 0 {
             let new_index = self.zero.len();
             let mut neighbors: [usize; M0] = [!0; M0];
@@ -418,40 +437,53 @@ where
             )
         };
 
-        // Get the worst neighbor of this node currently.
-        let (worst_ix, worst_distance) = target_neighbors
-            .iter()
-            .enumerate()
-            .map(|(ix, &n)| {
-                // Compute the distance to be higher than possible if the neighbor is not filled yet so its always filled.
-                let distance = if n == !0 {
-                    core::u64::MAX
-                } else {
-                    // Compute the distance. The feature is looked up differently for the zero layer.
-                    T::distance(
-                        target_feature,
-                        &self.features[if layer == 0 {
-                            n
-                        } else {
-                            self.layers[layer - 1][n].zero_node
-                        }],
-                    )
-                };
-                (ix, distance)
-            })
-            // This was done instead of max_by_key because min_by_key takes the first equally bad element.
-            .min_by_key(|&(_, distance)| !distance)
-            .unwrap();
-
-        // If this is better than the worst, insert it in the worst's place.
-        // This is also different for the zero layer.
-        if T::distance(q, target_feature) < worst_distance {
+        // Check if there is a point where the target has empty neighbor slots and add it there in that case.
+        let empty_point = target_neighbors.partition_point(|&n| n != !0);
+        if empty_point != target_neighbors.len() {
+            // In this case we did find the first spot where the target was empty within the slice.
+            // Now we add the neighbor to this slot.
             if layer == 0 {
-                self.zero[target_ix as usize].neighbors[worst_ix] = node_ix;
+                self.zero[target_ix as usize].neighbors[empty_point] = node_ix;
             } else {
                 self.layers[layer - 1][target_ix as usize]
                     .neighbors
-                    .neighbors[worst_ix] = node_ix;
+                    .neighbors[empty_point] = node_ix;
+            }
+        } else {
+            // Otherwise, we need to find the worst neighbor currently.
+            let (worst_ix, worst_distance) = target_neighbors
+                .iter()
+                .enumerate()
+                .filter_map(|(ix, &n)| {
+                    // Compute the distance to be higher than possible if the neighbor is not filled yet so its always filled.
+                    if n == !0 {
+                        None
+                    } else {
+                        // Compute the distance. The feature is looked up differently for the zero layer.
+                        let distance = target_feature.distance(
+                            &self.features[if layer == 0 {
+                                n
+                            } else {
+                                self.layers[layer - 1][n].zero_node
+                            }],
+                        );
+                        Some((ix, distance))
+                    }
+                })
+                // This was done instead of max_by_key because min_by_key takes the first equally bad element.
+                .min_by_key(|&(_, distance)| core::cmp::Reverse(distance))
+                .unwrap();
+
+            // If this is better than the worst, insert it in the worst's place.
+            // This is also different for the zero layer.
+            if q.distance(target_feature) < worst_distance {
+                if layer == 0 {
+                    self.zero[target_ix as usize].neighbors[worst_ix] = node_ix;
+                } else {
+                    self.layers[layer - 1][target_ix as usize]
+                        .neighbors
+                        .neighbors[worst_ix] = node_ix;
+                }
             }
         }
     }

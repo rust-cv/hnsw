@@ -1,7 +1,7 @@
-use byteorder::{ByteOrder, NativeEndian};
 use gnuplot::*;
 use hnsw::*;
 use itertools::Itertools;
+use num_traits::Zero;
 use rand::distributions::Standard;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
@@ -141,7 +141,7 @@ fn process<T: MetricPoint + Clone, const M: usize, const M0: usize>(
         "Computing the correct nearest neighbor distance for all {} queries...",
         opt.num_queries
     );
-    let correct_worst_distances: Vec<u64> = query_strings
+    let correct_worst_distances: Vec<_> = query_strings
         .iter()
         .cloned()
         .map(|feature| {
@@ -162,7 +162,7 @@ fn process<T: MetricPoint + Clone, const M: usize, const M0: usize>(
     eprintln!("Generating HNSW...");
     let mut hnsw: Hnsw<T, Pcg64, M, M0> =
         Hnsw::new_params(Params::new().ef_construction(opt.ef_construction));
-    let mut searcher: Searcher = Searcher::default();
+    let mut searcher: Searcher<_> = Searcher::default();
     for feature in &search_space {
         hnsw.insert(feature.clone(), &mut searcher);
     }
@@ -174,14 +174,20 @@ fn process<T: MetricPoint + Clone, const M: usize, const M0: usize>(
     let (recalls, times): (Vec<f64>, Vec<f64>) = efs
         .map(|ef| {
             let correct = RefCell::new(0usize);
-            let dest = vec![Neighbor::invalid(); opt.k];
-            let stats = easybench::bench_env(dest, |mut dest| {
+            let dest = vec![
+                Neighbor::<T::Metric> {
+                    index: !0,
+                    distance: T::Metric::zero(),
+                };
+                opt.k
+            ];
+            let stats = easybench::bench_env(dest, |dest| {
                 let mut refmut = state.borrow_mut();
                 let (searcher, query) = &mut *refmut;
                 let (ix, query_feature) = query.next().unwrap();
                 let correct_worst_distance = correct_worst_distances[ix];
                 // Go through all the features.
-                for &mut neighbor in hnsw.nearest(&query_feature, ef, searcher, &mut dest) {
+                for &mut neighbor in hnsw.nearest(&query_feature, ef, searcher, dest) {
                     // Any feature that is less than or equal to the worst real nearest neighbor distance is correct.
                     if T::distance(&search_space[neighbor.index], &query_feature)
                         <= correct_worst_distance
@@ -209,26 +215,26 @@ fn process<T: MetricPoint + Clone, const M: usize, const M0: usize>(
 macro_rules! process_m {
     ( $opt:expr, $m:expr, $m0:expr ) => {
         match $opt.bitstring_length {
-            8 => process::<Hamming<u8>, $m, $m0>(&$opt, |b| Hamming(b[0])),
-            16 => process::<Hamming<u16>, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u16(b))),
-            32 => process::<Hamming<u32>, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u32(b))),
-            64 => process::<Hamming<u64>, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u64(b))),
-            128 => {
-                process::<Hamming<u128>, $m, $m0>(&$opt, |b| Hamming(NativeEndian::read_u128(b)))
-            }
-            256 => process::<Hamming<Bits256>, $m, $m0>(&$opt, |b| {
+            128 => process::<Bits128, $m, $m0>(&$opt, |b| {
+                let mut arr = [0; 16];
+                for (d, &s) in arr.iter_mut().zip(b) {
+                    *d = s;
+                }
+                Bits128(arr)
+            }),
+            256 => process::<Bits256, $m, $m0>(&$opt, |b| {
                 let mut arr = [0; 32];
                 for (d, &s) in arr.iter_mut().zip(b) {
                     *d = s;
                 }
-                Hamming(Bits256(arr))
+                Bits256(arr)
             }),
-            512 => process::<Hamming<Bits512>, $m, $m0>(&$opt, |b| {
+            512 => process::<Bits512, $m, $m0>(&$opt, |b| {
                 let mut arr = [0; 64];
                 for (d, &s) in arr.iter_mut().zip(b) {
                     *d = s;
                 }
-                Hamming(Bits512(arr))
+                Bits512(arr)
             }),
             _ => panic!("error: incorrect bitstring_length, see --help for choices"),
         }

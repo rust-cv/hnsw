@@ -1,5 +1,4 @@
 use criterion::*;
-use hamming_heap::FixedHammingHeap;
 use hnsw::*;
 use rand_pcg::Pcg64;
 use space::*;
@@ -28,14 +27,14 @@ fn bench_neighbors(c: &mut Criterion) {
     file.read_exact(&mut v).expect(
         "unable to read enough search descriptors from the file; add more descriptors to file",
     );
-    let search_space: Vec<Hamming<Bits256>> = v
+    let search_space: Vec<Bits256> = v
         .chunks_exact(descriptor_size_bytes)
         .map(|b| {
             let mut arr = [0; 32];
             for (d, &s) in arr.iter_mut().zip(b) {
                 *d = s;
             }
-            Hamming(Bits256(arr))
+            Bits256(arr)
         })
         .collect();
     eprintln!("Done.");
@@ -49,14 +48,14 @@ fn bench_neighbors(c: &mut Criterion) {
     file.read_exact(&mut v).expect(
         "unable to read enough search descriptors from the file; add more descriptors to file",
     );
-    let query_strings: Vec<Hamming<Bits256>> = v
+    let query_strings: Vec<Bits256> = v
         .chunks_exact(descriptor_size_bytes)
         .map(|b| {
             let mut arr = [0; 32];
             for (d, &s) in arr.iter_mut().zip(b) {
                 *d = s;
             }
-            Hamming(Bits256(arr))
+            Bits256(arr)
         })
         .collect();
     eprintln!("Done.");
@@ -99,87 +98,35 @@ fn bench_neighbors(c: &mut Criterion) {
                 },
             );
 
-            // Run 2_nn_linear_FixedHammingHeap test.
+            // Run 2_nn_linear_Vec test.
             let mut cycle_range = query_strings.iter().cloned().cycle();
-            let mut nearest = FixedHammingHeap::new_distances(257);
             group.bench_with_input(
-                BenchmarkId::new("2_nn_linear_FixedHammingHeap", parameter),
+                BenchmarkId::new("2_nn_LinearKnn", parameter),
                 &(),
                 |b, _| {
                     b.iter(|| {
-                        nearest.set_capacity(2);
-                        nearest.clear();
                         let search_feature = cycle_range.next().unwrap();
-                        for (ix, feature) in search_space[0..size].iter().enumerate() {
-                            nearest.push(search_feature.distance(feature) as u32, ix as u32);
-                        }
-                        nearest.len()
+                        LinearKnn(search_space[..size].iter()).knn(&search_feature, 2)
                     })
                 },
             );
 
-            // Run 2_nn_linear_FixedDiscreteCandidates test.
+            // Run 10_nn_linear_Vec test.
             let mut cycle_range = query_strings.iter().cloned().cycle();
-            let mut nearest = CandidatesVec::default();
             group.bench_with_input(
-                BenchmarkId::new("2_nn_linear_FixedDiscreteCandidates", parameter),
+                BenchmarkId::new("10_nn_LinearKnn", parameter),
                 &(),
                 |b, _| {
                     b.iter(|| {
-                        nearest.set_cap(2);
-                        nearest.clear();
                         let search_feature = cycle_range.next().unwrap();
-                        for (index, feature) in search_space[0..size].iter().enumerate() {
-                            let distance = search_feature.distance(feature);
-                            nearest.push(Neighbor { index, distance });
-                        }
-                        nearest.len()
-                    })
-                },
-            );
-
-            // Run 10_nn_linear_FixedHammingHeap test.
-            let mut cycle_range = query_strings.iter().cloned().cycle();
-            let mut nearest = FixedHammingHeap::new_distances(257);
-            group.bench_with_input(
-                BenchmarkId::new("10_nn_linear_FixedHammingHeap", parameter),
-                &(),
-                |b, _| {
-                    b.iter(|| {
-                        nearest.set_capacity(10);
-                        nearest.clear();
-                        let search_feature = cycle_range.next().unwrap();
-                        for (ix, feature) in search_space[0..size].iter().enumerate() {
-                            nearest.push(search_feature.distance(feature) as u32, ix as u32);
-                        }
-                        nearest.len()
-                    })
-                },
-            );
-
-            // Run 10_nn_linear_FixedDiscreteCandidates test.
-            let mut cycle_range = query_strings.iter().cloned().cycle();
-            let mut nearest = CandidatesVec::default();
-            group.bench_with_input(
-                BenchmarkId::new("10_nn_linear_FixedDiscreteCandidates", parameter),
-                &(),
-                |b, _| {
-                    b.iter(|| {
-                        nearest.set_cap(10);
-                        nearest.clear();
-                        let search_feature = cycle_range.next().unwrap();
-                        for (index, feature) in search_space[0..size].iter().enumerate() {
-                            let distance = search_feature.distance(feature);
-                            nearest.push(Neighbor { index, distance });
-                        }
-                        nearest.len()
+                        LinearKnn(search_space[..size].iter()).knn(&search_feature, 10)
                     })
                 },
             );
         }
 
         eprintln!("Generating HNSW size {}...", size);
-        let mut hnsw: Hnsw<Hamming<Bits256>, Pcg64, 12, 24> = Hnsw::new();
+        let mut hnsw: Hnsw<Bits256, Pcg64, 12, 24> = Hnsw::new();
         let mut searcher = Searcher::default();
         for &item in &search_space[0..size] {
             hnsw.insert(item, &mut searcher);
@@ -192,7 +139,10 @@ fn bench_neighbors(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("2_nn_DiscreteHNSW", size), &(), |b, _| {
             b.iter(|| {
                 let feature = cycle_range.next().unwrap();
-                let mut neighbors = [Neighbor::invalid(); 2];
+                let mut neighbors = [Neighbor {
+                    index: !0,
+                    distance: !0,
+                }; 2];
                 hnsw.nearest(&feature, 24, &mut searcher, &mut neighbors)
                     .len()
             })
@@ -204,7 +154,10 @@ fn bench_neighbors(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("10_nn_DiscreteHNSW", size), &(), |b, _| {
             b.iter(|| {
                 let feature = cycle_range.next().unwrap();
-                let mut neighbors = [Neighbor::invalid(); 10];
+                let mut neighbors = [Neighbor {
+                    index: !0,
+                    distance: !0,
+                }; 10];
                 hnsw.nearest(&feature, 24, &mut searcher, &mut neighbors)
                     .len()
             })

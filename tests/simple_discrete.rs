@@ -2,9 +2,19 @@
 
 use hnsw::{Hnsw, Searcher};
 use rand_pcg::Pcg64;
-use space::{Hamming, Neighbor};
+use space::{MetricPoint, Neighbor};
 
-fn test_hnsw_discrete() -> (Hnsw<Hamming<u128>, Pcg64, 12, 24>, Searcher) {
+struct Hamming(u8);
+
+impl MetricPoint for Hamming {
+    type Metric = u8;
+
+    fn distance(&self, other: &Self) -> u8 {
+        (self.0 ^ other.0).count_ones() as u8
+    }
+}
+
+fn test_hnsw_discrete() -> (Hnsw<Hamming, Pcg64, 12, 24>, Searcher<u8>) {
     let mut searcher = Searcher::default();
     let mut hnsw = Hnsw::new();
 
@@ -27,7 +37,10 @@ fn insertion_discrete() {
 #[test]
 fn nearest_neighbor_discrete() {
     let (hnsw, mut searcher) = test_hnsw_discrete();
-    let mut neighbors = [Neighbor::invalid(); 8];
+    let mut neighbors = [Neighbor {
+        index: !0,
+        distance: !0,
+    }; 8];
 
     hnsw.nearest(&Hamming(0b0001), 24, &mut searcher, &mut neighbors);
     // Distance 1

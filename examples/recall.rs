@@ -15,15 +15,15 @@ use structopt::StructOpt;
 struct Euclidean<'a>(&'a [f32]);
 
 impl MetricPoint for Euclidean<'_> {
-    fn distance(&self, rhs: &Self) -> u64 {
-        space::f32_metric(
-            self.0
-                .iter()
-                .zip(rhs.0.iter())
-                .map(|(&a, &b)| (a - b).powi(2))
-                .sum::<f32>()
-                .sqrt(),
-        )
+    type Metric = u32;
+    fn distance(&self, rhs: &Self) -> u32 {
+        self.0
+            .iter()
+            .zip(rhs.0.iter())
+            .map(|(&a, &b)| (a - b).powi(2))
+            .sum::<f32>()
+            .sqrt()
+            .to_bits()
     }
 }
 
@@ -164,7 +164,7 @@ fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
         "Computing the correct nearest neighbor distance for all {} queries...",
         opt.num_queries
     );
-    let correct_worst_distances: Vec<u64> = query_strings
+    let correct_worst_distances: Vec<_> = query_strings
         .iter()
         .cloned()
         .map(|feature| {
@@ -185,7 +185,7 @@ fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
     eprintln!("Generating HNSW...");
     let mut hnsw: Hnsw<_, Pcg64, M, M0> =
         Hnsw::new_params(Params::new().ef_construction(opt.ef_construction));
-    let mut searcher: Searcher = Searcher::default();
+    let mut searcher: Searcher<_> = Searcher::default();
     for feature in &search_space {
         hnsw.insert(feature.clone(), &mut searcher);
     }
@@ -197,7 +197,13 @@ fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
     let (recalls, times): (Vec<f64>, Vec<f64>) = efs
         .map(|ef| {
             let correct = RefCell::new(0usize);
-            let dest = vec![Neighbor::invalid(); opt.k];
+            let dest = vec![
+                Neighbor {
+                    index: !0,
+                    distance: !0,
+                };
+                opt.k
+            ];
             let stats = easybench::bench_env(dest, |mut dest| {
                 let mut refmut = state.borrow_mut();
                 let (searcher, query) = &mut *refmut;
