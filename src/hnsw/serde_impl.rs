@@ -19,7 +19,7 @@ impl<'de, const N: usize> Deserialize<'de> for NeighborNodes<N> {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_bytes(NeighborNodesVisitor::<N>)
+        deserializer.deserialize_seq(NeighborNodesVisitor::<N>)
     }
 }
 
@@ -29,7 +29,7 @@ impl<'de, const N: usize> Visitor<'de> for NeighborNodesVisitor<N> {
     type Value = NeighborNodes<N>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "[u32; {}]", N)
+        write!(formatter, "[usize; {}]", N)
     }
 
     fn visit_seq<S>(self, mut seq: S) -> Result<NeighborNodes<N>, S::Error>
