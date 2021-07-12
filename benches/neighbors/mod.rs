@@ -1,3 +1,4 @@
+use bitarray::BitArray;
 use criterion::*;
 use hnsw::*;
 use rand_pcg::Pcg64;
@@ -27,14 +28,14 @@ fn bench_neighbors(c: &mut Criterion) {
     file.read_exact(&mut v).expect(
         "unable to read enough search descriptors from the file; add more descriptors to file",
     );
-    let search_space: Vec<Bits256> = v
+    let search_space: Vec<BitArray<32>> = v
         .chunks_exact(descriptor_size_bytes)
         .map(|b| {
             let mut arr = [0; 32];
             for (d, &s) in arr.iter_mut().zip(b) {
                 *d = s;
             }
-            Bits256(arr)
+            BitArray::new(arr)
         })
         .collect();
     eprintln!("Done.");
@@ -48,14 +49,14 @@ fn bench_neighbors(c: &mut Criterion) {
     file.read_exact(&mut v).expect(
         "unable to read enough search descriptors from the file; add more descriptors to file",
     );
-    let query_strings: Vec<Bits256> = v
+    let query_strings: Vec<BitArray<32>> = v
         .chunks_exact(descriptor_size_bytes)
         .map(|b| {
             let mut arr = [0; 32];
             for (d, &s) in arr.iter_mut().zip(b) {
                 *d = s;
             }
-            Bits256(arr)
+            BitArray::new(arr)
         })
         .collect();
     eprintln!("Done.");
@@ -126,7 +127,7 @@ fn bench_neighbors(c: &mut Criterion) {
         }
 
         eprintln!("Generating HNSW size {}...", size);
-        let mut hnsw: Hnsw<Bits256, Pcg64, 12, 24> = Hnsw::new();
+        let mut hnsw: Hnsw<BitArray<32>, Pcg64, 12, 24> = Hnsw::new();
         let mut searcher = Searcher::default();
         for &item in &search_space[0..size] {
             hnsw.insert(item, &mut searcher);

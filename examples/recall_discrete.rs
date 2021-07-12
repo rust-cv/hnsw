@@ -1,3 +1,4 @@
+use bitarray::BitArray;
 use gnuplot::*;
 use hnsw::*;
 use itertools::Itertools;
@@ -215,26 +216,26 @@ fn process<T: MetricPoint + Clone, const M: usize, const M0: usize>(
 macro_rules! process_m {
     ( $opt:expr, $m:expr, $m0:expr ) => {
         match $opt.bitstring_length {
-            128 => process::<Bits128, $m, $m0>(&$opt, |b| {
+            128 => process::<BitArray<16>, $m, $m0>(&$opt, |b| {
                 let mut arr = [0; 16];
                 for (d, &s) in arr.iter_mut().zip(b) {
                     *d = s;
                 }
-                Bits128(arr)
+                BitArray::new(arr)
             }),
-            256 => process::<Bits256, $m, $m0>(&$opt, |b| {
+            256 => process::<BitArray<32>, $m, $m0>(&$opt, |b| {
                 let mut arr = [0; 32];
                 for (d, &s) in arr.iter_mut().zip(b) {
                     *d = s;
                 }
-                Bits256(arr)
+                BitArray::new(arr)
             }),
-            512 => process::<Bits512, $m, $m0>(&$opt, |b| {
+            512 => process::<BitArray<64>, $m, $m0>(&$opt, |b| {
                 let mut arr = [0; 64];
                 for (d, &s) in arr.iter_mut().zip(b) {
                     *d = s;
                 }
-                Bits512(arr)
+                BitArray::new(arr)
             }),
             _ => panic!("error: incorrect bitstring_length, see --help for choices"),
         }

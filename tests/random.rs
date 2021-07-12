@@ -1,12 +1,13 @@
 //! More robust tests that are generated from substantial random data.
 
+use bitarray::BitArray;
 use hnsw::*;
 use rand::distributions::{Bernoulli, Standard};
 use rand::seq::SliceRandom;
 use rand::Rng;
 use rand_core::SeedableRng;
 use rand_pcg::Pcg64;
-use space::{Bits128, MetricPoint, Neighbor};
+use space::Neighbor;
 
 // This can be adjusted lower if it is too slow.
 const SEARCH_SPACE_SIZE: usize = 1 << 10;
@@ -15,14 +16,14 @@ const SEARCH_SPACE_SIZE: usize = 1 << 10;
 fn linear_1_nn() {
     let mut searcher = Searcher::default();
     let searcher = &mut searcher;
-    let mut hnsw: Hnsw<Bits128, Pcg64, 12, 24> = Hnsw::new();
+    let mut hnsw: Hnsw<BitArray<16>, Pcg64, 12, 24> = Hnsw::new();
     let mut output = [Neighbor {
         index: !0,
         distance: !0,
     }; 1];
 
     let prng = Pcg64::from_seed([5; 32]);
-    let mut rngiter = prng.sample_iter(&Standard).map(Bits128);
+    let mut rngiter = prng.sample_iter(&Standard).map(BitArray::new);
     let space = (&mut rngiter).take(SEARCH_SPACE_SIZE).collect::<Vec<_>>();
     let search = (&mut rngiter).take(100).collect::<Vec<_>>();
 
@@ -62,7 +63,7 @@ fn linear_1_nn() {
 fn linear_1_nn_inliers() {
     let mut searcher = Searcher::default();
     let searcher = &mut searcher;
-    let mut hnsw: Hnsw<Bits128, Pcg64, 12, 24> = Hnsw::new();
+    let mut hnsw: Hnsw<BitArray<16>, Pcg64, 12, 24> = Hnsw::new();
     let mut output = [Neighbor {
         index: !0,
         distance: !0,
@@ -73,7 +74,7 @@ fn linear_1_nn_inliers() {
     let prng = Pcg64::from_seed([5; 32]);
     let space = prng
         .sample_iter(&Standard)
-        .map(Bits128)
+        .map(BitArray::new)
         .take(SEARCH_SPACE_SIZE)
         .collect::<Vec<_>>();
     let mut prng_elem_chooser = Pcg64::from_seed([6; 32]);
