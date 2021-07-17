@@ -1,10 +1,11 @@
 use crate::hnsw::nodes::{NeighborNodes, Node};
 use crate::*;
 use alloc::{vec, vec::Vec};
+use num_traits::Zero;
 use rand_core::{RngCore, SeedableRng};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use space::{MetricPoint, Neighbor};
+use space::{Knn, KnnPoints, MetricPoint, Neighbor};
 
 /// This provides a HNSW implementation for any distance function.
 ///
@@ -48,6 +49,40 @@ where
             params,
             ..Default::default()
         }
+    }
+}
+
+impl<T, R, const M: usize, const M0: usize> Knn<T> for Hnsw<T, R, M, M0>
+where
+    R: RngCore,
+    T: MetricPoint,
+{
+    type KnnIter = Vec<Neighbor<T::Metric>>;
+
+    fn knn(&self, query: &T, num: usize) -> Self::KnnIter {
+        let mut searcher = Searcher::default();
+        let mut neighbors = vec![
+            Neighbor {
+                index: !0,
+                distance: T::Metric::zero(),
+            };
+            num
+        ];
+        let found = self
+            .nearest(query, num + 16, &mut searcher, &mut neighbors)
+            .len();
+        neighbors.resize_with(found, || unreachable!());
+        neighbors
+    }
+}
+
+impl<T, R, const M: usize, const M0: usize> KnnPoints<T> for Hnsw<T, R, M, M0>
+where
+    R: RngCore,
+    T: MetricPoint,
+{
+    fn get_point(&self, index: usize) -> &'_ T {
+        &self.features[index]
     }
 }
 
