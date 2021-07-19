@@ -1,4 +1,4 @@
-use bitarray::BitArray;
+use bitarray::{BitArray, Hamming};
 use criterion::*;
 use hnsw::*;
 use rand_pcg::Pcg64;
@@ -107,7 +107,11 @@ fn bench_neighbors(c: &mut Criterion) {
                 |b, _| {
                     b.iter(|| {
                         let search_feature = cycle_range.next().unwrap();
-                        LinearKnn(search_space[..size].iter()).knn(&search_feature, 2)
+                        LinearKnn {
+                            metric: Hamming,
+                            iter: search_space[..size].iter(),
+                        }
+                        .knn(&search_feature, 2)
                     })
                 },
             );
@@ -120,14 +124,18 @@ fn bench_neighbors(c: &mut Criterion) {
                 |b, _| {
                     b.iter(|| {
                         let search_feature = cycle_range.next().unwrap();
-                        LinearKnn(search_space[..size].iter()).knn(&search_feature, 10)
+                        LinearKnn {
+                            metric: Hamming,
+                            iter: search_space[..size].iter(),
+                        }
+                        .knn(&search_feature, 10)
                     })
                 },
             );
         }
 
         eprintln!("Generating HNSW size {}...", size);
-        let mut hnsw: Hnsw<BitArray<32>, Pcg64, 12, 24> = Hnsw::new();
+        let mut hnsw: Hnsw<Hamming, BitArray<32>, Pcg64, 12, 24> = Hnsw::default();
         let mut searcher = Searcher::default();
         for &item in &search_space[0..size] {
             hnsw.insert(item, &mut searcher);

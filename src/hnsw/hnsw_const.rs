@@ -5,21 +5,23 @@ use num_traits::Zero;
 use rand_core::{RngCore, SeedableRng};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use space::{Knn, KnnPoints, MetricPoint, Neighbor};
+use space::{Knn, KnnPoints, Metric, Neighbor};
 
 /// This provides a HNSW implementation for any distance function.
 ///
-/// The type `T` must implement [`space::MetricPoint`] to get implementations.
+/// The type `T` must implement [`space::Metric`] to get implementations.
 #[derive(Clone)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(bound(
-        serialize = "T: Serialize, R: Serialize",
-        deserialize = "T: Deserialize<'de>, R: Deserialize<'de>"
+        serialize = "Met: Serialize, T: Serialize, R: Serialize",
+        deserialize = "Met: Deserialize<'de>, T: Deserialize<'de>, R: Deserialize<'de>"
     ))
 )]
-pub struct Hnsw<T, R, const M: usize, const M0: usize> {
+pub struct Hnsw<Met, T, R, const M: usize, const M0: usize> {
+    /// Contains the space metric.
+    metric: Met,
     /// Contains the zero layer.
     zero: Vec<NeighborNodes<M0>>,
     /// Contains the features of the zero layer.
@@ -34,37 +36,51 @@ pub struct Hnsw<T, R, const M: usize, const M0: usize> {
     params: Params,
 }
 
-impl<T, R, const M: usize, const M0: usize> Hnsw<T, R, M, M0>
+impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0>
 where
     R: RngCore + SeedableRng,
 {
     /// Creates a new HNSW with a PRNG which is default seeded to produce deterministic behavior.
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(metric: Met) -> Self {
+        Self {
+            metric,
+            zero: vec![],
+            features: vec![],
+            layers: vec![],
+            prng: R::from_seed(R::Seed::default()),
+            params: Params::new(),
+        }
     }
 
     /// Creates a new HNSW with a default seeded PRNG and with the specified params.
-    pub fn new_params(params: Params) -> Self {
+    pub fn new_params(metric: Met, params: Params) -> Self {
         Self {
+            metric,
+            zero: vec![],
+            features: vec![],
+            layers: vec![],
+            prng: R::from_seed(R::Seed::default()),
             params,
-            ..Default::default()
         }
     }
 }
 
-impl<T, R, const M: usize, const M0: usize> Knn<T> for Hnsw<T, R, M, M0>
+impl<Met, T, R, const M: usize, const M0: usize> Knn for Hnsw<Met, T, R, M, M0>
 where
     R: RngCore,
-    T: MetricPoint,
+    Met: Metric<T>,
 {
-    type KnnIter = Vec<Neighbor<T::Metric>>;
+    type Ix = usize;
+    type Metric = Met;
+    type Point = T;
+    type KnnIter = Vec<Neighbor<Met::Unit>>;
 
     fn knn(&self, query: &T, num: usize) -> Self::KnnIter {
         let mut searcher = Searcher::default();
         let mut neighbors = vec![
             Neighbor {
                 index: !0,
-                distance: T::Metric::zero(),
+                distance: Met::Unit::zero(),
             };
             num
         ];
@@ -76,24 +92,25 @@ where
     }
 }
 
-impl<T, R, const M: usize, const M0: usize> KnnPoints<T> for Hnsw<T, R, M, M0>
+impl<Met, T, R, const M: usize, const M0: usize> KnnPoints for Hnsw<Met, T, R, M, M0>
 where
     R: RngCore,
-    T: MetricPoint,
+    Met: Metric<T>,
 {
     fn get_point(&self, index: usize) -> &'_ T {
         &self.features[index]
     }
 }
 
-impl<T, R, const M: usize, const M0: usize> Hnsw<T, R, M, M0>
+impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0>
 where
     R: RngCore,
-    T: MetricPoint,
+    Met: Metric<T>,
 {
     /// Creates a HNSW with the passed `prng`.
-    pub fn new_prng(prng: R) -> Self {
+    pub fn new_prng(metric: Met, prng: R) -> Self {
         Self {
+            metric,
             zero: vec![],
             features: vec![],
             layers: vec![],
@@ -103,8 +120,9 @@ where
     }
 
     /// Creates a HNSW with the passed `params` and `prng`.
-    pub fn new_params_and_prng(params: Params, prng: R) -> Self {
+    pub fn new_params_and_prng(metric: Met, params: Params, prng: R) -> Self {
         Self {
+            metric,
             zero: vec![],
             features: vec![],
             layers: vec![],
@@ -114,7 +132,7 @@ where
     }
 
     /// Inserts a feature into the HNSW.
-    pub fn insert(&mut self, q: T, searcher: &mut Searcher<T::Metric>) -> usize {
+    pub fn insert(&mut self, q: T, searcher: &mut Searcher<Met::Unit>) -> usize {
         // Get the level of this feature.
         let level = self.random_level();
         let mut cap = if level >= self.layers.len() {
@@ -198,9 +216,9 @@ where
         &self,
         q: &T,
         ef: usize,
-        searcher: &mut Searcher<T::Metric>,
-        dest: &'a mut [Neighbor<T::Metric>],
-    ) -> &'a mut [Neighbor<T::Metric>] {
+        searcher: &mut Searcher<Met::Unit>,
+        dest: &'a mut [Neighbor<Met::Unit>],
+    ) -> &'a mut [Neighbor<Met::Unit>] {
         self.search_layer(q, ef, 0, searcher, dest)
     }
 
@@ -261,9 +279,9 @@ where
         q: &T,
         ef: usize,
         level: usize,
-        searcher: &mut Searcher<T::Metric>,
-        dest: &'a mut [Neighbor<T::Metric>],
-    ) -> &'a mut [Neighbor<T::Metric>] {
+        searcher: &mut Searcher<Met::Unit>,
+        dest: &'a mut [Neighbor<Met::Unit>],
+    ) -> &'a mut [Neighbor<Met::Unit>] {
         // If there is nothing in here, then just return nothing.
         if self.features.is_empty() || level >= self.layers() {
             return &mut [];
@@ -296,7 +314,7 @@ where
     fn search_single_layer(
         &self,
         q: &T,
-        searcher: &mut Searcher<T::Metric>,
+        searcher: &mut Searcher<Met::Unit>,
         layer: &[Node<M>],
         cap: usize,
     ) {
@@ -308,7 +326,9 @@ where
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
                 if searcher.seen.insert(neighbor_node.zero_node) {
                     // Compute the distance of this neighbor.
-                    let distance = T::distance(q, &self.features[neighbor_node.zero_node as usize]);
+                    let distance = self
+                        .metric
+                        .distance(q, &self.features[neighbor_node.zero_node as usize]);
                     // Attempt to insert into nearest queue.
                     let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
                     if pos != cap {
@@ -331,7 +351,7 @@ where
     }
 
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
-    fn search_zero_layer(&self, q: &T, searcher: &mut Searcher<T::Metric>, cap: usize) {
+    fn search_zero_layer(&self, q: &T, searcher: &mut Searcher<Met::Unit>, cap: usize) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
             for neighbor in self.zero[index as usize].neighbors() {
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
@@ -339,7 +359,7 @@ where
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
                 if searcher.seen.insert(neighbor) {
                     // Compute the distance of this neighbor.
-                    let distance = T::distance(q, &self.features[neighbor as usize]);
+                    let distance = self.metric.distance(q, &self.features[neighbor as usize]);
                     // Attempt to insert into nearest queue.
                     let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
                     if pos != cap {
@@ -364,7 +384,7 @@ where
     /// Ready a search for the next level down.
     ///
     /// `m` is the maximum number of nearest neighbors to consider during the search.
-    fn lower_search(&self, layer: &[Node<M>], searcher: &mut Searcher<T::Metric>) {
+    fn lower_search(&self, layer: &[Node<M>], searcher: &mut Searcher<Met::Unit>) {
         // Clear the candidates so we can fill them with the best nodes in the last layer.
         searcher.candidates.clear();
         // Only preserve the best candidate. The original paper's algorithm uses `1` every time.
@@ -385,11 +405,11 @@ where
 
     /// Resets a searcher, but does not set the `cap` on the nearest neighbors.
     /// Must be passed the query element `q`.
-    fn initialize_searcher(&self, q: &T, searcher: &mut Searcher<T::Metric>) {
+    fn initialize_searcher(&self, q: &T, searcher: &mut Searcher<Met::Unit>) {
         // Clear the searcher.
         searcher.clear();
         // Add the entry point.
-        let entry_distance = T::distance(q, self.entry_feature());
+        let entry_distance = self.metric.distance(q, self.entry_feature());
         let candidate = Neighbor {
             index: 0,
             distance: entry_distance,
@@ -421,7 +441,7 @@ where
 
     /// Creates a new node at a layer given its nearest neighbors in that layer.
     /// This contains Algorithm 3 from the paper, but also includes some additional logic.
-    fn create_node(&mut self, q: &T, nearest: &[Neighbor<T::Metric>], layer: usize) {
+    fn create_node(&mut self, q: &T, nearest: &[Neighbor<Met::Unit>], layer: usize) {
         if layer == 0 {
             let new_index = self.zero.len();
             let mut neighbors: [usize; M0] = [!0; M0];
@@ -495,7 +515,8 @@ where
                         None
                     } else {
                         // Compute the distance. The feature is looked up differently for the zero layer.
-                        let distance = target_feature.distance(
+                        let distance = self.metric.distance(
+                            target_feature,
                             &self.features[if layer == 0 {
                                 n
                             } else {
@@ -511,7 +532,7 @@ where
 
             // If this is better than the worst, insert it in the worst's place.
             // This is also different for the zero layer.
-            if q.distance(target_feature) < worst_distance {
+            if self.metric.distance(q, target_feature) < worst_distance {
                 if layer == 0 {
                     self.zero[target_ix as usize].neighbors[worst_ix] = node_ix;
                 } else {
@@ -524,17 +545,12 @@ where
     }
 }
 
-impl<T, R, const M: usize, const M0: usize> Default for Hnsw<T, R, M, M0>
+impl<Met, T, R, const M: usize, const M0: usize> Default for Hnsw<Met, T, R, M, M0>
 where
-    R: SeedableRng,
+    R: RngCore + SeedableRng,
+    Met: Default,
 {
     fn default() -> Self {
-        Self {
-            zero: vec![],
-            features: vec![],
-            layers: vec![],
-            prng: R::from_seed(R::Seed::default()),
-            params: Params::new(),
-        }
+        Self::new(Met::default())
     }
 }

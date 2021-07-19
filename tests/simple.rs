@@ -2,16 +2,15 @@
 
 use hnsw::{Hnsw, Searcher};
 use rand_pcg::Pcg64;
-use space::{MetricPoint, Neighbor};
+use space::{Metric, Neighbor};
 
-struct Euclidean(&'static [f64]);
+struct Euclidean;
 
-impl MetricPoint for Euclidean {
-    type Metric = u64;
-    fn distance(&self, rhs: &Self) -> u64 {
-        self.0
-            .iter()
-            .zip(rhs.0.iter())
+impl Metric<&[f64]> for Euclidean {
+    type Unit = u64;
+    fn distance(&self, a: &&[f64], b: &&[f64]) -> u64 {
+        a.iter()
+            .zip(b.iter())
             .map(|(&a, &b)| (a - b).powi(2))
             .sum::<f64>()
             .sqrt()
@@ -19,9 +18,12 @@ impl MetricPoint for Euclidean {
     }
 }
 
-fn test_hnsw() -> (Hnsw<Euclidean, Pcg64, 12, 24>, Searcher<u64>) {
+fn test_hnsw() -> (
+    Hnsw<Euclidean, &'static [f64], Pcg64, 12, 24>,
+    Searcher<u64>,
+) {
     let mut searcher = Searcher::default();
-    let mut hnsw = Hnsw::new();
+    let mut hnsw = Hnsw::new(Euclidean);
 
     let features = [
         &[0.0, 0.0, 0.0, 1.0],
@@ -35,7 +37,7 @@ fn test_hnsw() -> (Hnsw<Euclidean, Pcg64, 12, 24>, Searcher<u64>) {
     ];
 
     for &feature in &features {
-        hnsw.insert(Euclidean(feature), &mut searcher);
+        hnsw.insert(feature, &mut searcher);
     }
 
     (hnsw, searcher)
@@ -55,12 +57,7 @@ fn nearest_neighbor() {
         distance: !0,
     }; 8];
 
-    hnsw.nearest(
-        &Euclidean(&[0.0, 0.0, 0.0, 1.0]),
-        24,
-        searcher,
-        &mut neighbors,
-    );
+    hnsw.nearest(&&[0.0, 0.0, 0.0, 1.0][..], 24, searcher, &mut neighbors);
     // Distance 1
     neighbors[1..3].sort_unstable();
     // Distance 2

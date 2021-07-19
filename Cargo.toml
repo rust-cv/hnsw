@@ -19,7 +19,7 @@ name = "benches"
 harness = false
 
 [dependencies]
-space = { version = "0.14.2", default-features = false, features = ["alloc"] }
+space = { version = "0.17.0", default-features = false, features = ["alloc"] }
 rand_core = "0.6.3"
 hashbrown = "0.11.2"
 serde = { version = "1.0.126", default-features = false, features = ["derive"], optional = true }
@@ -29,7 +29,7 @@ ahash = { version = "0.7.4", default-features = false }
 num-traits = { version = "0.2.14", default-features = false }
 
 [dev-dependencies]
-space = { version = "0.14.2", features = ["serde", "alloc"] }
+space = { version = "0.17.0", features = ["serde", "alloc"] }
 rand_pcg = { version = "0.3.1", features = ["serde1"] }
 hamming-heap = "0.4.1"
 rand = "0.8.4"
@@ -42,9 +42,12 @@ float-ord = "0.3.1"
 byteorder = "1.4.3"
 serde_json = "1.0.64"
 num-traits = "0.2.14"
-bitarray = { version = "0.5.1", default-features = false, features = ["space"] }
+bitarray = { version = "0.9.1", default-features = false, features = ["space"] }
 
 [profile.dev]
+opt-level = 3
+
+[profile.test]
 # The tests take a very long time without optimization.
 opt-level = 3
 

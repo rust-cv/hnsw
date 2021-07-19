@@ -4,22 +4,20 @@ use hnsw::*;
 use rand::distributions::Standard;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
-use space::MetricPoint;
+use space::Metric;
 use space::Neighbor;
 use std::cell::RefCell;
 use std::io::Read;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-#[derive(Clone)]
-struct Euclidean<'a>(&'a [f32]);
+struct Euclidean;
 
-impl MetricPoint for Euclidean<'_> {
-    type Metric = u32;
-    fn distance(&self, rhs: &Self) -> u32 {
-        self.0
-            .iter()
-            .zip(rhs.0.iter())
+impl Metric<&[f32]> for Euclidean {
+    type Unit = u32;
+    fn distance(&self, a: &&[f32], b: &&[f32]) -> u32 {
+        a.iter()
+            .zip(b.iter())
             .map(|(&a, &b)| (a - b).powi(2))
             .sum::<f32>()
             .sqrt()
@@ -152,12 +150,10 @@ fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
     let search_space: Vec<_> = search_space
         .chunks_exact(opt.descriptor_stride)
         .map(|c| &c[..opt.dimensions])
-        .map(Euclidean)
         .collect();
     let query_strings: Vec<_> = query_strings
         .chunks_exact(opt.descriptor_stride)
         .map(|c| &c[..opt.dimensions])
-        .map(Euclidean)
         .collect();
 
     eprintln!(
@@ -169,7 +165,7 @@ fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
         .cloned()
         .map(|feature| {
             let mut v = vec![];
-            for distance in search_space.iter().map(|n| n.distance(&feature)) {
+            for distance in search_space.iter().map(|n| Euclidean.distance(n, &feature)) {
                 let pos = v.binary_search(&distance).unwrap_or_else(|e| e);
                 v.insert(pos, distance);
                 if v.len() > opt.k {
@@ -183,11 +179,13 @@ fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
     eprintln!("Done.");
 
     eprintln!("Generating HNSW...");
-    let mut hnsw: Hnsw<_, Pcg64, M, M0> =
-        Hnsw::new_params(Params::new().ef_construction(opt.ef_construction));
+    let mut hnsw: Hnsw<_, _, Pcg64, M, M0> = Hnsw::new_params(
+        Euclidean,
+        Params::new().ef_construction(opt.ef_construction),
+    );
     let mut searcher: Searcher<_> = Searcher::default();
     for feature in &search_space {
-        hnsw.insert(feature.clone(), &mut searcher);
+        hnsw.insert(*feature, &mut searcher);
     }
     eprintln!("Done.");
 
@@ -212,7 +210,7 @@ fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
                 // Go through all the features.
                 for &mut neighbor in hnsw.nearest(&query_feature, ef, searcher, &mut dest) {
                     // Any feature that is less than or equal to the worst real nearest neighbor distance is correct.
-                    if search_space[neighbor.index].distance(&query_feature)
+                    if Euclidean.distance(&search_space[neighbor.index], &query_feature)
                         <= correct_worst_distance
                     {
                         *correct.borrow_mut() += 1;
