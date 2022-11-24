@@ -23,17 +23,23 @@ pub struct Hnsw<Met, T, R, const M: usize, const M0: usize> {
     /// Contains the space metric.
     metric: Met,
     /// Contains the zero layer.
-    zero: Vec<NeighborNodes<M0>>,
+    //zero: Vec<NeighborNodes<M0>>,
     /// Contains the features of the zero layer.
     /// These are stored separately to allow SIMD speedup in the future by
     /// grouping small worlds of features together.
-    features: Vec<T>,
     /// Contains each non-zero layer.
-    layers: Vec<Vec<Node<M>>>,
+    //layers: Vec<Vec<Node<M>>>,
+    n_layer: usize,
+    n_node: usize,
     /// This needs to create resonably random outputs to determine the levels of insertions.
     prng: R,
+    storage: NodeDB<Node<M>>,
     /// The parameters for the HNSW.
     params: Params,
+}
+
+fn unknown_node_handler(idx: usize) {
+    panic!("unknown node id: {}", idx);
 }
 
 impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0>
@@ -42,13 +48,14 @@ where
 {
     /// Creates a new HNSW with a PRNG which is default seeded to produce deterministic behavior.
     pub fn new(metric: Met) -> Self {
+        let params = Params::new();
         Self {
             metric,
-            zero: vec![],
-            features: vec![],
-            layers: vec![],
+            n_layer: 0,
+            n_node: 0,
             prng: R::from_seed(R::Seed::default()),
-            params: Params::new(),
+            storage: NodeDB<Node<M>>::new(&params.dbpath),
+            params,
         }
     }
 
@@ -56,10 +63,10 @@ where
     pub fn new_params(metric: Met, params: Params) -> Self {
         Self {
             metric,
-            zero: vec![],
-            features: vec![],
-            layers: vec![],
+            n_layer: 0,   
+            n_node: 0,
             prng: R::from_seed(R::Seed::default()),
+            storage: NodeDB<Node<M>>::new(&params.dbpath),
             params,
         }
     }
@@ -98,7 +105,8 @@ where
     Met: Metric<T>,
 {
     fn get_point(&self, index: usize) -> &'_ T {
-        &self.features[index]
+        //TODO: error handling
+        self.storage.get(index).unwrap()
     }
 }
 
@@ -109,13 +117,14 @@ where
 {
     /// Creates a HNSW with the passed `prng`.
     pub fn new_prng(metric: Met, prng: R) -> Self {
+        params = Params::new();
         Self {
             metric,
-            zero: vec![],
-            features: vec![],
-            layers: vec![],
+            n_layer: 0,
+            n_node: 0,
             prng,
-            params: Default::default(),
+            storage: NodeDB<Node<M>>::new(&params.dbpath),
+            params,
         }
     }
 
@@ -123,10 +132,10 @@ where
     pub fn new_params_and_prng(metric: Met, params: Params, prng: R) -> Self {
         Self {
             metric,
-            zero: vec![],
-            features: vec![],
-            layers: vec![],
+            n_layer: 0,
+            n_node: 0,
             prng,
+            storage: NodeDB<Node<M>>::new(&params.dbpath),
             params,
         }
     }
@@ -135,7 +144,7 @@ where
     pub fn insert(&mut self, q: T, searcher: &mut Searcher<Met::Unit>) -> usize {
         // Get the level of this feature.
         let level = self.random_level();
-        let mut cap = if level >= self.layers.len() {
+        let mut cap = if level >= self.n_layer {
             self.params.ef_construction
         } else {
             1
@@ -144,21 +153,24 @@ where
         // If this is empty, none of this will work, so just add it manually.
         if self.is_empty() {
             // Add the zero node unconditionally.
+            /*
             self.zero.push(NeighborNodes {
                 neighbors: [!0; M0],
             });
-            self.features.push(q);
-
+            */
+            let node = Node {
+                zero_node: 0,
+                next_node: 0,
+                neighbors: vec![],
+                zero_neighbors: NeighborNodes { neighbors: [!0; M0]},
+                feature: q,
+            };
             // Add all the layers its in.
-            while self.layers.len() < level {
+            for i in (..level) {
                 // It's always index 0 with no neighbors since its the first feature.
-                let node = Node {
-                    zero_node: 0,
-                    next_node: 0,
-                    neighbors: NeighborNodes { neighbors: [!0; M] },
-                };
-                self.layers.push(vec![node]);
+                node.neighbors.push(NeighborNodes { neighbors: [!0; M] });
             }
+            self.store(node);
             return 0;
         }
 
@@ -244,29 +256,23 @@ where
     }
 
     pub fn layers(&self) -> usize {
-        self.layers.len() + 1
+        self.n_layer + 1
     }
 
     pub fn len(&self) -> usize {
-        self.zero.len()
+        self.n_node
     }
 
     pub fn layer_len(&self, level: usize) -> usize {
-        if level == 0 {
-            self.features.len()
-        } else if level < self.layers() {
-            self.layers[level - 1].len()
-        } else {
-            0
-        }
+        self.n_layer
     }
 
     pub fn is_empty(&self) -> bool {
-        self.zero.is_empty()
+        self.n_node == 0
     }
 
     pub fn layer_is_empty(&self, level: usize) -> bool {
-        self.layer_len(level) == 0
+        self.n_layer == 0
     }
 
     /// Performs the same algorithm as [`HNSW::nearest`], but stops on a particular layer of the network
@@ -319,34 +325,22 @@ where
         cap: usize,
     ) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
-            for neighbor in layer[index as usize].neighbors() {
-                let neighbor_node = &layer[neighbor as usize];
-                // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
-                // across all layers since zero nodes are consistent among all layers.
-                // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
-                if searcher.seen.insert(neighbor_node.zero_node) {
-                    // Compute the distance of this neighbor.
-                    let distance = self
-                        .metric
-                        .distance(q, &self.features[neighbor_node.zero_node as usize]);
-                    // Attempt to insert into nearest queue.
-                    let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
+            let candidate_node = self.storage.get(index).unwrap_or_else(unknown_node_handler(index));
+            candidate_node.neighbors().iter().map(|nidx| {
+                let neighbor_node = self.storage.get(nidx).unwrap_or_else(unknown_node_handler(nidx));
+                if searcher.seen.insert(nidx) {
+                    let d = self.metric.distance(q, neighbor_node.feature);
+                    let pos = searcher.nearest.partition_point(|n| n.distance <= d);
                     if pos != cap {
-                        // It was successful. Now we need to know if its full.
                         if searcher.nearest.len() == cap {
-                            // In this case remove the worst item.
                             searcher.nearest.pop();
                         }
-                        // Either way, add the new item.
-                        let candidate = Neighbor {
-                            index: neighbor as usize,
-                            distance,
-                        };
-                        searcher.nearest.insert(pos, candidate);
-                        searcher.candidates.push(candidate);
+                        let new_candidate = Neighbor { index: nidx, distance: d};
+                        searcher.nearest.insert(pos, new_candidate);
+                        searcher.candidates.push(new_candidate);
                     }
                 }
-            }
+            }).collect();
         }
     }
 
