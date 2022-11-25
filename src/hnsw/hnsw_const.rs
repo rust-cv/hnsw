@@ -170,7 +170,7 @@ where
                 // It's always index 0 with no neighbors since its the first feature.
                 node.neighbors.push(NeighborNodes { neighbors: [!0; M] });
             }
-            self.store(node);
+            self.store(node, level);
             return 0;
         }
 
@@ -296,9 +296,9 @@ where
         self.initialize_searcher(q, searcher);
         let cap = 1;
 
-        for (ix, layer) in self.layers.iter().enumerate().rev() {
-            self.search_single_layer(q, searcher, layer, cap);
-            if ix + 1 == level {
+        for idx in (..self.n_layer).rev() {
+            self.search_single_layer(q, searcher, cap);
+            if idx + 1 == level {
                 let found = core::cmp::min(dest.len(), searcher.nearest.len());
                 dest.copy_from_slice(&searcher.nearest[..found]);
                 return &mut dest[..found];
@@ -321,11 +321,11 @@ where
         &self,
         q: &T,
         searcher: &mut Searcher<Met::Unit>,
-        layer: &[Node<M>],
         cap: usize,
     ) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
             let candidate_node = self.storage.get(index).unwrap_or_else(unknown_node_handler(index));
+
             candidate_node.neighbors().iter().map(|nidx| {
                 let neighbor_node = self.storage.get(nidx).unwrap_or_else(unknown_node_handler(nidx));
                 if searcher.seen.insert(nidx) {
@@ -347,31 +347,18 @@ where
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
     fn search_zero_layer(&self, q: &T, searcher: &mut Searcher<Met::Unit>, cap: usize) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
-            for neighbor in self.zero[index as usize].neighbors() {
-                // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
-                // across all layers since zero nodes are consistent among all layers.
-                // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
-                if searcher.seen.insert(neighbor) {
-                    // Compute the distance of this neighbor.
-                    let distance = self.metric.distance(q, &self.features[neighbor as usize]);
-                    // Attempt to insert into nearest queue.
-                    let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
-                    if pos != cap {
-                        // It was successful. Now we need to know if its full.
-                        if searcher.nearest.len() == cap {
-                            // In this case remove the worst item.
-                            searcher.nearest.pop();
-                        }
-                        // Either way, add the new item.
-                        let candidate = Neighbor {
-                            index: neighbor as usize,
-                            distance,
-                        };
-                        searcher.nearest.insert(pos, candidate);
-                        searcher.candidates.push(candidate);
-                    }
+            let candidate_node = self.storage.get(index).unwrap_or_else(unknown_node_handler(index));
+
+            candidate_node.zero_neighbors().iter().map(|nidx|{
+                let neighbor_node = self.storage.get(nidx).unwrap_or_else(unknown_node_handler(nidx));
+                if searcher.seen.insert(nidx) {
+                    let d = self.metric.distance(q, neighbor_node.feature);
+                    let pos = searcher.nearest.partition_point(|n| n.distance <= d);
+                    let new_candidate = Neighbor { index: nidx, distance: d};
+                    searcher.nearest.insert(pos, new_candidate);
+                    searcher.candidates.push(new_candidate);
                 }
-            }
+            }).collect();
         }
     }
 
@@ -379,28 +366,17 @@ where
     ///
     /// `m` is the maximum number of nearest neighbors to consider during the search.
     fn lower_search(&self, layer: &[Node<M>], searcher: &mut Searcher<Met::Unit>) {
-        // Clear the candidates so we can fill them with the best nodes in the last layer.
         searcher.candidates.clear();
-        // Only preserve the best candidate. The original paper's algorithm uses `1` every time.
-        // See Algorithm 5 line 5 of the paper. The paper makes no further comment on why `1` was chosen.
-        let &Neighbor { index, distance } = searcher.nearest.first().unwrap();
+        let next = searcher.nearest.first().unwrap();
         searcher.nearest.clear();
-        // Update the node to the next layer.
-        let new_index = layer[index].next_node as usize;
-        let candidate = Neighbor {
-            index: new_index,
-            distance,
-        };
-        // Insert the index of the nearest neighbor into the nearest pool for the next layer.
-        searcher.nearest.push(candidate);
-        // Insert the index into the candidate pool as well.
-        searcher.candidates.push(candidate);
+
+        searcher.nearest.push(next);
+        searcher.candidates.push(next);
     }
 
     /// Resets a searcher, but does not set the `cap` on the nearest neighbors.
     /// Must be passed the query element `q`.
     fn initialize_searcher(&self, q: &T, searcher: &mut Searcher<Met::Unit>) {
-        // Clear the searcher.
         searcher.clear();
         // Add the entry point.
         let entry_distance = self.metric.distance(q, self.entry_feature());
@@ -410,12 +386,7 @@ where
         };
         searcher.candidates.push(candidate);
         searcher.nearest.push(candidate);
-        searcher.seen.insert(
-            self.layers
-                .last()
-                .map(|layer| layer[0].zero_node)
-                .unwrap_or(0),
-        );
+        searcher.seen.insert(0);
     }
 
     /// Gets the entry point's feature.
