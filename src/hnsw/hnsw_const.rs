@@ -10,7 +10,6 @@ use space::{Knn, KnnPoints, Metric, Neighbor};
 /// This provides a HNSW implementation for any distance function.
 ///
 /// The type `T` must implement [`space::Metric`] to get implementations.
-#[derive(Clone)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -19,7 +18,10 @@ use space::{Knn, KnnPoints, Metric, Neighbor};
         deserialize = "Met: Deserialize<'de>, T: Deserialize<'de>, R: Deserialize<'de>"
     ))
 )]
-pub struct Hnsw<Met, T, R, const M: usize, const M0: usize> {
+pub struct Hnsw<Met, T, R, const M: usize, const M0: usize>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned,
+{
     /// Contains the space metric.
     metric: Met,
     /// Contains the zero layer.
@@ -33,7 +35,7 @@ pub struct Hnsw<Met, T, R, const M: usize, const M0: usize> {
     n_node: usize,
     /// This needs to create resonably random outputs to determine the levels of insertions.
     prng: R,
-    storage: NodeDB<Node<M>>,
+    storage: NodeDB<T, M, M0>,
     /// The parameters for the HNSW.
     params: Params,
 }
@@ -45,16 +47,18 @@ fn unknown_node_handler(idx: usize) {
 impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0>
 where
     R: RngCore + SeedableRng,
+    T: serde::Serialize + serde::de::DeserializeOwned,
 {
     /// Creates a new HNSW with a PRNG which is default seeded to produce deterministic behavior.
     pub fn new(metric: Met) -> Self {
-        let params = Params::new();
+        let params = Params::default();
+
         Self {
             metric,
             n_layer: 0,
             n_node: 0,
             prng: R::from_seed(R::Seed::default()),
-            storage: NodeDB<Node<M>>::new(&params.dbpath),
+            storage: NodeDB::<T, M, M0>::new(&params.dbpath),
             params,
         }
     }
@@ -63,10 +67,10 @@ where
     pub fn new_params(metric: Met, params: Params) -> Self {
         Self {
             metric,
-            n_layer: 0,   
+            n_layer: 0,
             n_node: 0,
             prng: R::from_seed(R::Seed::default()),
-            storage: NodeDB<Node<M>>::new(&params.dbpath),
+            storage: NodeDB::<T, M, M0>::new(&params.dbpath),
             params,
         }
     }
@@ -76,6 +80,7 @@ impl<Met, T, R, const M: usize, const M0: usize> Knn for Hnsw<Met, T, R, M, M0>
 where
     R: RngCore,
     Met: Metric<T>,
+    T: serde::Serialize + serde::de::DeserializeOwned,
 {
     type Ix = usize;
     type Metric = Met;
@@ -103,10 +108,11 @@ impl<Met, T, R, const M: usize, const M0: usize> KnnPoints for Hnsw<Met, T, R, M
 where
     R: RngCore,
     Met: Metric<T>,
+    T: serde::Serialize + serde::de::DeserializeOwned,
 {
     fn get_point(&self, index: usize) -> &'_ T {
         //TODO: error handling
-        self.storage.get(index).unwrap()
+        &self.storage.get(index as i32).unwrap().unwrap().feature
     }
 }
 
@@ -114,16 +120,18 @@ impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0>
 where
     R: RngCore,
     Met: Metric<T>,
+    T: serde::Serialize + serde::de::DeserializeOwned,
 {
     /// Creates a HNSW with the passed `prng`.
     pub fn new_prng(metric: Met, prng: R) -> Self {
-        params = Params::new();
+        let params = Params::default();
+
         Self {
             metric,
             n_layer: 0,
             n_node: 0,
             prng,
-            storage: NodeDB<Node<M>>::new(&params.dbpath),
+            storage: NodeDB::<T, M, M0>::new(&params.dbpath),
             params,
         }
     }
@@ -135,7 +143,7 @@ where
             n_layer: 0,
             n_node: 0,
             prng,
-            storage: NodeDB<Node<M>>::new(&params.dbpath),
+            storage: NodeDB::<T, M, M0>::new(&params.dbpath),
             params,
         }
     }
@@ -159,18 +167,22 @@ where
             });
             */
             let node = Node {
-                zero_node: 0,
-                next_node: 0,
+                id: 0,
+                // zero_node: 0,
+                // next_node: 0,
                 neighbors: vec![],
-                zero_neighbors: NeighborNodes { neighbors: [!0; M0]},
+                zero_neighbors: NeighborNodes {
+                    neighbors: [!0; M0],
+                },
                 feature: q,
             };
             // Add all the layers its in.
-            for i in (..level) {
+            for i in 0..level {
                 // It's always index 0 with no neighbors since its the first feature.
                 node.neighbors.push(NeighborNodes { neighbors: [!0; M] });
             }
-            self.store(node, level);
+            self.storage.put(node);
+
             return 0;
         }
 
@@ -179,7 +191,7 @@ where
         // Find the entry point on the level it was created by searching normally until its level.
         for ix in (level..self.layers.len()).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_single_layer(&q, searcher, &self.layers[ix], cap);
+            self.search_single_layer(&q, searcher, cap);
             // Then lower the search only after we create the node.
             self.lower_search(&self.layers[ix], searcher);
             cap = if ix == level {
@@ -192,7 +204,7 @@ where
         // Then start from its level and connect it to its nearest neighbors.
         for ix in (0..core::cmp::min(level, self.layers.len())).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_single_layer(&q, searcher, &self.layers[ix], cap);
+            self.search_single_layer(&q, searcher, cap);
             // Then use the results of that search on this layer to connect the nodes.
             self.create_node(&q, &searcher.nearest, ix + 1);
             // Then lower the search only after we create the node.
@@ -210,9 +222,15 @@ where
         let zero_node = self.zero.len() - 1;
         while self.layers.len() < level {
             let node = Node {
-                zero_node,
-                next_node: self.layers.last().map(|l| l.len() - 1).unwrap_or(zero_node),
-                neighbors: NeighborNodes { neighbors: [!0; M] },
+                id: 0,
+                // zero_node,
+                // next_node: self.layers.last().map(|l| l.len() - 1).unwrap_or(zero_node),
+                neighbors: vec![],
+                zero_neighbors: NeighborNodes {
+                    neighbors: [!0; M0],
+                },
+                feature: q,
+                // neighbors: NeighborNodes { neighbors: [!0; M] },
             };
             self.layers.push(vec![node]);
         }
@@ -317,55 +335,76 @@ where
 
     /// Greedily finds the approximate nearest neighbors to `q` in a non-zero layer.
     /// This corresponds to Algorithm 2 in the paper.
-    fn search_single_layer(
-        &self,
-        q: &T,
-        searcher: &mut Searcher<Met::Unit>,
-        cap: usize,
-    ) {
+    fn search_single_layer(&self, q: &T, searcher: &mut Searcher<Met::Unit>, cap: usize) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
-            let candidate_node = self.storage.get(index).unwrap_or_else(unknown_node_handler(index));
+            let candidate_node = self
+                .storage
+                .get(index)
+                .unwrap_or_else(unknown_node_handler(index));
 
-            candidate_node.neighbors().iter().map(|nidx| {
-                let neighbor_node = self.storage.get(nidx).unwrap_or_else(unknown_node_handler(nidx));
-                if searcher.seen.insert(nidx) {
-                    let d = self.metric.distance(q, neighbor_node.feature);
-                    let pos = searcher.nearest.partition_point(|n| n.distance <= d);
-                    if pos != cap {
-                        if searcher.nearest.len() == cap {
-                            searcher.nearest.pop();
+            candidate_node
+                .neighbors()
+                .iter()
+                .map(|nidx| {
+                    let neighbor_node = self
+                        .storage
+                        .get(nidx)
+                        .unwrap_or_else(unknown_node_handler(nidx));
+                    if searcher.seen.insert(nidx) {
+                        let d = self.metric.distance(q, &neighbor_node.feature);
+                        let pos = searcher.nearest.partition_point(|n| n.distance <= d);
+                        if pos != cap {
+                            if searcher.nearest.len() == cap {
+                                searcher.nearest.pop();
+                            }
+                            let new_candidate = Neighbor {
+                                index: nidx,
+                                distance: d,
+                            };
+                            searcher.nearest.insert(pos, new_candidate);
+                            searcher.candidates.push(new_candidate);
                         }
-                        let new_candidate = Neighbor { index: nidx, distance: d};
-                        searcher.nearest.insert(pos, new_candidate);
-                        searcher.candidates.push(new_candidate);
                     }
-                }
-            }).collect();
+                })
+                .collect();
         }
     }
 
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
     fn search_zero_layer(&self, q: &T, searcher: &mut Searcher<Met::Unit>, cap: usize) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
-            let candidate_node = self.storage.get(index).unwrap_or_else(unknown_node_handler(index));
+            let candidate_node = self
+                .storage
+                .get(index)
+                .unwrap_or_else(unknown_node_handler(index));
 
-            candidate_node.zero_neighbors().iter().map(|nidx|{
-                let neighbor_node = self.storage.get(nidx).unwrap_or_else(unknown_node_handler(nidx));
-                if searcher.seen.insert(nidx) {
-                    let d = self.metric.distance(q, neighbor_node.feature);
-                    let pos = searcher.nearest.partition_point(|n| n.distance <= d);
-                    let new_candidate = Neighbor { index: nidx, distance: d};
-                    searcher.nearest.insert(pos, new_candidate);
-                    searcher.candidates.push(new_candidate);
-                }
-            }).collect();
+            candidate_node
+                .zero_neighbors()
+                .iter()
+                .map(|nidx| {
+                    let neighbor_node = self
+                        .storage
+                        .get(nidx)
+                        .unwrap_or_else(unknown_node_handler(nidx));
+                    if searcher.seen.insert(nidx) {
+                        let d = self.metric.distance(q, &neighbor_node.feature);
+                        let pos = searcher.nearest.partition_point(|n| n.distance <= d);
+                        let new_candidate = Neighbor {
+                            index: nidx,
+                            distance: d,
+                        };
+                        searcher.nearest.insert(pos, new_candidate);
+                        searcher.candidates.push(new_candidate);
+                    }
+                })
+                .collect();
         }
     }
 
     /// Ready a search for the next level down.
     ///
     /// `m` is the maximum number of nearest neighbors to consider during the search.
-    fn lower_search(&self, layer: &[Node<M>], searcher: &mut Searcher<Met::Unit>) {
+    fn lower_search(&self, layer: &[Node<T, M, M0>], searcher: &mut Searcher<Met::Unit>) {
         searcher.candidates.clear();
         let next = searcher.nearest.first().unwrap();
         searcher.nearest.clear();
@@ -425,12 +464,17 @@ where
                 *d = s.index;
             }
             let node = Node {
-                zero_node: self.zero.len(),
-                next_node: if layer == 1 {
-                    self.zero.len()
-                } else {
-                    self.layers[layer - 2].len()
+                id: 0,
+                // zero_node: self.zero.len(),
+                // next_node: if layer == 1 {
+                //     self.zero.len()
+                // } else {
+                //     self.layers[layer - 2].len()
+                // },
+                zero_neighbors: NeighborNodes {
+                    neighbors: [!0; M0],
                 },
+                feature: q,
                 neighbors: NeighborNodes { neighbors },
             };
             for neighbor in node.neighbors() {
@@ -514,6 +558,7 @@ impl<Met, T, R, const M: usize, const M0: usize> Default for Hnsw<Met, T, R, M, 
 where
     R: RngCore + SeedableRng,
     Met: Default,
+    T: serde::Serialize + serde::de::DeserializeOwned,
 {
     fn default() -> Self {
         Self::new(Met::default())

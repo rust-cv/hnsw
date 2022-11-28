@@ -1,6 +1,5 @@
 mod hnsw_const;
-mod nodes;
-#[cfg(feature = "serde")]
+pub mod nodes;
 mod serde_impl;
 
 pub use hnsw_const::*;
