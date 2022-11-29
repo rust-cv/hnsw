@@ -1,33 +1,29 @@
-extern crate tempdir;
-extern crate leveldb;
-
+use leveldb::{
+    database::Database,
+    kv::KV,
+    options::{Options, ReadOptions, WriteOptions},
+};
+use lru::LruCache;
+use rmp_serde::Serializer;
+use serde::Serialize as _;
 use std::num::NonZeroUsize;
 
-use leveldb::database::Database;
-use leveldb::kv::KV;
-use leveldb::options::{Options, WriteOptions, ReadOptions};
-
-use lru::LruCache;
-
-use rmps::{Serializer, Deserializer};
-
-use crate::hnsw::nodes::Node;
-
+#[derive(Debug)]
 enum Error {
-    Serialize(Serializer::Error),
-    Deserialize(Deserializer::Error),
+    Serialize(rmp_serde::encode::Error),
+    Deserialize(rmp_serde::decode::Error),
     LevelDB(leveldb::error::Error),
     UnknownError,
 }
 
-impl From<Serializer::Error> for Error {
-    fn from(e: Serializer::Error) -> Self {
+impl From<rmp_serde::encode::Error> for Error {
+    fn from(e: rmp_serde::encode::Error) -> Self {
         Self::Serialize(e)
     }
 }
 
-impl From<Deserializer::Error> for Error {
-    fn from(e: Deserializer::Error) -> Self {
+impl From<rmp_serde::decode::Error> for Error {
+    fn from(e: rmp_serde::decode::Error) -> Self {
         Self::Deserialize(e)
     }
 }
@@ -38,52 +34,62 @@ impl From<leveldb::error::Error> for Error {
     }
 }
 
-pub struct NodeDB<NodeType> {
-    db: Database<usize>,
-    cache: LruCache<usize, NodeType>,
+pub struct NodeDB<T, const M: usize, const M0: usize>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned,
+{
+    db: Database<i32>,
+    cache: LruCache<i32, crate::nodes::Node<T, M, M0>>,
 }
 
-impl<NodeType> NodeDB<NodeType> {
-    fn new(path: &String) -> Self {
-        db = Database::open::<usize>::(path, {
-            let mut opts = leveldb::Options::new();
+impl<T, const M: usize, const M0: usize> NodeDB<T, M, M0>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned,
+{
+    pub fn new(path: impl AsRef<std::path::Path>) -> Self {
+        let db = Database::open(path.as_ref(), {
+            let mut opts = Options::new();
             opts.create_if_missing = true;
-            
+
             opts
-        });
-        cache = LruCache::new(NonZeroUsize::new(10000).unwrap());
+        })
+        .unwrap();
 
-        NodeDB<NodeType> { db, cache }
+        let cache = LruCache::new(NonZeroUsize::new(10000).unwrap());
+
+        NodeDB { db, cache }
     }
-    fn put(node: NodeType) -> Result<Error> {
+
+    pub fn put(&self, node: crate::nodes::Node<T, M, M0>) -> Result<(), Error> {
         let mut buf = Vec::new();
-        node.serialize(Serializer::new(&buf))?;
+        node.serialize(&mut Serializer::new(&mut buf))?;
 
-        db.put(
-            WriteOptions::new(),
-            node.id,
-            buf.as_bytes(),
-        );
-        cache.insert(node.id, node);
+        self.db.put(WriteOptions::new(), node.id as i32, &buf);
+        self.cache.put(node.id as i32, node);
+
+        Ok(())
     }
-    fn get(id: usize) -> Result<&'_ NodeType, Error> {
-        if let Some(&mut val) = cache.get_mut(id) {
-            return Ok(&val);
+
+    pub fn get(&self, id: i32) -> Result<Option<&'_ crate::nodes::Node<T, M, M0>>, Error> {
+        if let Some(&mut val) = self.cache.get_mut(&id) {
+            return Ok(Some(&val));
         }
-        let data = db.get(
-            ReadOptions::new(),
-            id,
-        )?;
-        let node: NodeType = rmp_serde::from_slice(&data[..])?;
-        cache.insert(id, node);
-        if let Some(&mut val) = cache.get_mut(id) {
-            return Ok(&val);
+
+        if let Some(data) = self.db.get(ReadOptions::new(), id)? {
+            let node = rmp_serde::from_slice(&data[..])?;
+            self.cache.put(id, node);
+
+            Ok(Some(&node))
+        } else {
+            Ok(None)
         }
-        return Err(Error::UnknownError);
     }
 }
 
-pub struct MetadataDB {
-    db: Database<String>,
-    cache: LruCache<usize, NodeType>,
+pub struct MetadataDB<T, const M: usize, const M0: usize>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned,
+{
+    db: Database<i32>,
+    cache: LruCache<usize, crate::hnsw::nodes::Node<T, M, M0>>,
 }

@@ -11,9 +11,6 @@ documentation = "https://docs.rs/hnsw/"
 license = "MIT"
 readme = "README.md"
 
-[features]
-serde1 = ["smallvec/serde", "serde"]
-
 [[bench]]
 name = "benches"
 harness = false
@@ -22,14 +19,14 @@ harness = false
 space = { version = "0.17.0", default-features = false, features = ["alloc"] }
 rand_core = "0.6.3"
 hashbrown = "0.11.2"
-serde = { version = "1.0.126", default-features = false, features = ["derive"], optional = true }
+serde = { version = "1.0.126", default-features = false, features = ["derive"] }
 libm = "0.2.1"
 smallvec = { version = "1.6.1", features = ["const_generics"] }
 ahash = { version = "0.7.4", default-features = false }
 num-traits = { version = "0.2.14", default-features = false }
 leveldb = "0.8"
 lru = "0.8.1"
-rmp_serde = "1.1.1"
+rmp-serde = "1.1.1"
 
 [dev-dependencies]
 space = { version = "0.17.0", features = ["serde", "alloc"] }

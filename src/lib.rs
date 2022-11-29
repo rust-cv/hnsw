@@ -1,7 +1,7 @@
-#![no_std]
 extern crate alloc;
 
 mod hnsw;
+mod storage;
 
 pub use self::hnsw::*;
 
@@ -9,23 +9,24 @@ use ahash::RandomState;
 use alloc::{vec, vec::Vec};
 use hashbrown::HashSet;
 use space::Neighbor;
+use storage::NodeDB;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Params {
-    dbpath: String, 
+    dbpath: std::path::PathBuf,
     ef_construction: usize,
 }
 
 impl Params {
-    pub fn new() -> Self {
-        Default::default()
-    }
     pub fn new(dbpath: String) -> Self {
-        return Params { dbpath, ef_construction: 0 };
+        return Params {
+            dbpath: dbpath.into(),
+            ef_construction: 0,
+        };
     }
 
     /// This is refered to as `efConstruction` in the paper. This is equivalent to the `ef` parameter passed
@@ -45,6 +46,7 @@ impl Params {
 impl Default for Params {
     fn default() -> Self {
         Self {
+            dbpath: "/tmp/hnsw.db".into(),
             ef_construction: 400,
         }
     }

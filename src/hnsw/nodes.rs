@@ -1,6 +1,4 @@
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-use smallvec::SmallVec;
+// use smallvec::SmallVec;
 
 /// A node in the zero layer
 #[derive(Clone, Debug)]
@@ -16,9 +14,12 @@ impl<const N: usize> NeighborNodes<N> {
 }
 
 /// A node in any other layer other than the zero layer
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(bound = ""))]
-pub struct Node<T, const M: usize, const M0: usize> {
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(bound = "")]
+pub struct Node<T, const M: usize, const M0: usize>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned,
+{
     pub id: usize,
     /// The node in the zero layer this refers to.
     //pub zero_node: usize,
@@ -30,15 +31,24 @@ pub struct Node<T, const M: usize, const M0: usize> {
     pub feature: T,
 }
 
-impl<T, const N: usize> Node<T, N> {
+impl<T, const M: usize, const M0: usize> Node<T, M, M0>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned,
+{
     pub fn neighbors(&self) -> impl Iterator<Item = usize> + '_ {
-        self.neighbors.neighbors()
+        self.neighbors
+            .iter()
+            .map(|neighbors| neighbors.neighbors())
+            .flatten()
     }
 }
 
+/*
 /// The inbound nodes that are pointing to this node.
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(bound = ""))]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(bound = "")]
 pub struct InboundNodes<const N: usize> {
     pub neighbors: SmallVec<[usize; N]>,
 }
+
+*/
