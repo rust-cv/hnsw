@@ -29,14 +29,14 @@ impl<'de, const N: usize> Visitor<'de> for NeighborNodesVisitor<N> {
     type Value = NeighborNodes<N>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "[usize; {}]", N)
+        write!(formatter, "[(usize, f32); {}]", N)
     }
 
     fn visit_seq<S>(self, mut seq: S) -> Result<NeighborNodes<N>, S::Error>
     where
         S: SeqAccess<'de>,
     {
-        let mut neighbors = [!0; N];
+        let mut neighbors = [(0, f32::MAX); N];
         let mut position = 0;
 
         while let Some(n) = seq.next_element()? {

@@ -4,12 +4,17 @@
 #[derive(Clone, Debug)]
 pub struct NeighborNodes<const N: usize> {
     /// The neighbors of this node.
-    pub neighbors: [usize; N],
+    pub neighbors: [(usize, f32); N], // (id, cost)
 }
 
 impl<const N: usize> NeighborNodes<N> {
-    pub fn neighbors(&self) -> impl Iterator<Item = usize> + '_ {
-        self.neighbors.iter().cloned().take_while(|&n| n != !0)
+    pub fn new() -> Self {
+        NeighborNodes {
+            neighbors: [(0, f32::MAX); N],
+        }
+    }
+    pub fn neighbors(&self) -> impl Iterator<Item = (usize, f32)> + '_ {
+        self.neighbors.iter().cloned().take_while(|&n| n.1 != f32::MAX)
     }
 }
 
@@ -18,7 +23,7 @@ impl<const N: usize> NeighborNodes<N> {
 #[serde(bound = "")]
 pub struct Node<T, const M: usize, const M0: usize>
 where
-    T: serde::Serialize + serde::de::DeserializeOwned,
+    T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone,
 {
     pub id: usize,
     /// The node in the zero layer this refers to.
@@ -31,6 +36,14 @@ where
     pub feature: T,
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(bound = "")]
+pub struct MetaData {
+    pub entry_point: Option<i32>,
+    pub num_nodes: Option<i32>,
+}
+
+/*
 impl<T, const M: usize, const M0: usize> Node<T, M, M0>
 where
     T: serde::Serialize + serde::de::DeserializeOwned,
@@ -42,6 +55,7 @@ where
             .flatten()
     }
 }
+*/
 
 /*
 /// The inbound nodes that are pointing to this node.
