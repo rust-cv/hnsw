@@ -59,49 +59,6 @@ where
         Self { metric, prng, storage, params }
     }
 }
-/*
-impl<Met, T, R, const M: usize, const M0: usize> Knn for Hnsw<Met, T, R, M, M0>
-where
-    R: RngCore,
-    Met: Metric<T>,
-    <Met as Metric<T>>::Unit: Into<f32> + From<f32>,
-    T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone,
-{
-    type Ix = usize;
-    type Metric = Met;
-    type Point = T;
-    type KnnIter = Vec<Neighbor<Met::Unit>>;
-
-    fn knn(&self, query: &T, num: usize) -> Self::KnnIter {
-        let mut searcher = Searcher::default();
-        let mut neighbors = vec![
-            Neighbor {
-                index: !0,
-                distance: Met::Unit::zero(),
-            };
-            num
-        ];
-        let found = self
-            .nearest(query, num + 16, &mut searcher, &mut neighbors)
-            .len();
-        neighbors.resize_with(found, || unreachable!());
-        neighbors
-    }
-}
-
-impl<Met, T, R, const M: usize, const M0: usize> KnnPoints for Hnsw<Met, T, R, M, M0>
-where
-    R: RngCore,
-    Met: Metric<T>,
-    <Met as Metric<T>>::Unit: Into<f32> + From<f32>,
-    T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone,
-{
-    fn get_point(&self, index: usize) -> &'_ T {
-        //TODO: error handling
-        self.storage.get(index as i32).unwrap().unwrap().feature
-    }
-}
-*/
 
 impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0>
 where
@@ -175,11 +132,6 @@ where
         self.storage.num_node() - 1
     }
 
-    /// Does a k-NN search where `q` is the query element and it attempts to put up to `M` nearest neighbors into `dest`.
-    /// `ef` is the candidate pool size. `ef` can be increased to get better recall at the expense of speed.
-    /// If `ef` is less than `dest.len()` then `dest` will only be filled with `ef` elements.
-    ///
-    /// Returns a slice of the filled neighbors.
     pub fn nearest<'a>(
         &mut self,
         q: &T,
@@ -189,19 +141,7 @@ where
     ) -> &'a mut [Neighbor<Met::Unit>] {
         self.search_layer(q, ef, 0, searcher, dest)
     }
-/* 
-    pub fn is_empty(&self) -> bool {
-        if let Ok(Some(n)) = self.storage.get(0) {
-            return false;
-        }
-        return true;
-    }
-*/
-    /// Performs the same algorithm as [`HNSW::nearest`], but stops on a particular layer of the network
-    /// and returns the unique index on that layer rather than the item index.
-    ///
-    /// If this is passed a `level` of `0`, then this has the exact same functionality as [`HNSW::nearest`]
-    /// since the unique indices at layer `0` are the item indices.
+
     pub fn search_layer<'a>(
         &mut self,
         q: &T,
@@ -237,8 +177,6 @@ where
         &mut dest[..found]
     }
 
-    /// Greedily finds the approximate nearest neighbors to `q` in a non-zero layer.
-    /// This corresponds to Algorithm 2 in the paper.
     fn search_single_layer(&mut self, layer_idx: usize, q: &T, searcher: &mut Searcher<Met::Unit>, cap: usize) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
             let candidate_node = self
@@ -275,7 +213,6 @@ where
         }
     }
 
-    /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
     fn search_zero_layer(&mut self, q: &T, searcher: &mut Searcher<Met::Unit>, _cap: usize) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
             let candidate_node = self
@@ -307,9 +244,6 @@ where
         }
     }
 
-    /// Ready a search for the next level down.
-    ///
-    /// `m` is the maximum number of nearest neighbors to consider during the search.
     fn go_down_layer(&self, searcher: &mut Searcher<Met::Unit>) {
         searcher.candidates.clear();
         let next = searcher.nearest.first().unwrap().clone();
@@ -319,8 +253,6 @@ where
         searcher.candidates.push(next);
     }
 
-    /// Resets a searcher, but does not set the `cap` on the nearest neighbors.
-    /// Must be passed the query element `q`.
     fn initialize_searcher(&mut self, q: &T, searcher: &mut Searcher<Met::Unit>) {
         let ep = self.storage.load_entry_point_node().unwrap();
         searcher.clear();
@@ -341,8 +273,6 @@ where
         (-libm::log(uniform) * libm::log(M as f64).recip()) as usize
     }
 
-    /// Creates a new node at a layer given its nearest neighbors in that layer.
-    /// This contains Algorithm 3 from the paper, but also includes some additional logic.
     fn update_neighbors(&mut self, node: &Node<T, M, M0>, nearest: &[Neighbor<Met::Unit>], layer: usize) {
         nearest.iter()
                .for_each(|id| {
@@ -353,7 +283,6 @@ where
                });
     }
 
-    /// Attempts to add a neighbor to a target node.
     fn add_neighbor(&mut self, q: &T, node_ix: usize, target : &mut Node<T, M, M0>, layer: usize) {
         let distance :f32 = self.metric.distance(q, &target.feature).into();
         let insert_point = target.neighbors[layer]
