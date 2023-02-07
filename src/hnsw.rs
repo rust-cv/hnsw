@@ -164,7 +164,6 @@ where
 
         self.initialize_searcher(q, searcher);
         let cap = 1;
-println!("1");
         for idx in (0..self.storage.num_layer()).rev() {
             self.search_single_layer(idx, q, searcher, cap);
             if idx + 1 == level {
@@ -175,12 +174,10 @@ println!("1");
             self.go_down_layer(searcher);
         }
 
-        println!("2");
         let cap = ef;
 
         self.search_zero_layer(q, searcher, cap);
 
-        println!("3");
         let found = core::cmp::min(dest.len(), searcher.nearest.len());
         dest.copy_from_slice(&searcher.nearest[..found]);
         &mut dest[..found]
