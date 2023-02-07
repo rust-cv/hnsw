@@ -1,14 +1,17 @@
 extern crate alloc;
 
-mod hnsw;
+pub mod hnsw;
+pub mod metric;
 mod storage;
+mod nodes;
+mod serde_impl;
 
 pub use self::hnsw::*;
+use self::metric::Neighbor;
 
 use ahash::RandomState;
 use alloc::{vec, vec::Vec};
 use hashbrown::HashSet;
-use space::Neighbor;
 use storage::NodeDB;
 
 #[cfg(feature = "serde")]

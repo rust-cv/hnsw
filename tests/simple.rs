@@ -1,43 +1,29 @@
 //! Useful tests for debugging since they are hand-written and easy to see the debugging output.
 
-use hnsw::{Hnsw, Searcher};
+use hnsw::{Hnsw, Searcher, metric::{SimpleEuclidean, Neighbor, EncodableFloat}};
 use rand_pcg::Pcg64;
-use space::{Metric, Neighbor};
-
-struct Euclidean;
-
-impl Metric<&[f64]> for Euclidean {
-    type Unit = u64;
-    fn distance(&self, a: &&[f64], b: &&[f64]) -> u64 {
-        a.iter()
-            .zip(b.iter())
-            .map(|(&a, &b)| (a - b).powi(2))
-            .sum::<f64>()
-            .sqrt()
-            .to_bits()
-    }
-}
 
 fn test_hnsw() -> (
-    Hnsw<Euclidean, &'static [f64], Pcg64, 12, 24>,
-    Searcher<u64>,
+    Hnsw<SimpleEuclidean, Vec<f32>, Pcg64, 12, 24>,
+    Searcher<EncodableFloat>,
 ) {
     let mut searcher = Searcher::default();
-    let mut hnsw = Hnsw::new(Euclidean);
+    let mut hnsw = Hnsw::new(SimpleEuclidean);
 
     let features = [
-        &[0.0, 0.0, 0.0, 1.0],
-        &[0.0, 0.0, 1.0, 0.0],
-        &[0.0, 1.0, 0.0, 0.0],
-        &[1.0, 0.0, 0.0, 0.0],
-        &[0.0, 0.0, 1.0, 1.0],
-        &[0.0, 1.0, 1.0, 0.0],
-        &[1.0, 1.0, 0.0, 0.0],
-        &[1.0, 0.0, 0.0, 1.0],
+        vec![0.0, 0.0, 0.0, 1.0],
+        vec![0.0, 0.0, 1.0, 0.0],
+        vec![0.0, 1.0, 0.0, 0.0],
+        vec![1.0, 0.0, 0.0, 0.0],
+        vec![0.0, 0.0, 1.0, 1.0],
+        vec![0.0, 1.0, 1.0, 0.0],
+        vec![1.0, 1.0, 0.0, 0.0],
+        vec![1.0, 0.0, 0.0, 1.0],
     ];
 
-    for &feature in &features {
-        hnsw.insert(feature, &mut searcher);
+    for feature in features {
+        //let n = hnsw.insert(feature, &mut searcher);
+        //println!("{}", n);
     }
 
     (hnsw, searcher)
@@ -50,54 +36,57 @@ fn insertion() {
 
 #[test]
 fn nearest_neighbor() {
-    let (hnsw, mut searcher) = test_hnsw();
+    let (mut hnsw, mut searcher) = test_hnsw();
     let searcher = &mut searcher;
     let mut neighbors = [Neighbor {
-        index: !0,
-        distance: !0,
+        index: 0,
+        distance: EncodableFloat { value: f32::MAX },
     }; 8];
 
-    hnsw.nearest(&&[0.0, 0.0, 0.0, 1.0][..], 24, searcher, &mut neighbors);
+    let input = vec![0.0, 0.0, 0.0, 1.0];
+    hnsw.nearest(&input, 24, searcher, &mut neighbors);
+    println!("{:?}", searcher);
     // Distance 1
     neighbors[1..3].sort_unstable();
     // Distance 2
     neighbors[3..6].sort_unstable();
     // Distance 3
     neighbors[6..8].sort_unstable();
+    hnsw.dump();
     assert_eq!(
         neighbors,
         [
             Neighbor {
                 index: 0,
-                distance: 0
+                distance: EncodableFloat { value: 0.0 }
             },
             Neighbor {
                 index: 4,
-                distance: 4607182418800017408
+                distance: EncodableFloat { value: 1.0 }
             },
             Neighbor {
                 index: 7,
-                distance: 4607182418800017408
+                distance: EncodableFloat { value: 1.0 }
             },
             Neighbor {
                 index: 1,
-                distance: 4609047870845172685
+                distance: EncodableFloat { value: (2.0_f32).sqrt() }
             },
             Neighbor {
                 index: 2,
-                distance: 4609047870845172685
+                distance: EncodableFloat { value: (2.0_f32).sqrt() }
             },
             Neighbor {
                 index: 3,
-                distance: 4609047870845172685
+                distance: EncodableFloat { value: (2.0_f32).sqrt() }
             },
             Neighbor {
                 index: 5,
-                distance: 4610479282544200874
+                distance: EncodableFloat { value: (3.0_f32).sqrt() }
             },
             Neighbor {
                 index: 6,
-                distance: 4610479282544200874
+                distance: EncodableFloat { value: (3.0_f32).sqrt() }
             }
         ]
     );

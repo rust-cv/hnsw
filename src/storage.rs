@@ -40,7 +40,7 @@ impl From<leveldb::error::Error> for Error {
 
 pub struct NodeDB<T, const M: usize, const M0: usize>
 where
-    T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone,
+    T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone + core::fmt::Debug,
 {
     pub meta_data: MetaData,
     db: Database<i32>,
@@ -49,9 +49,10 @@ where
 
 impl<T, const M: usize, const M0: usize> NodeDB<T, M, M0>
 where
-    T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone,
+    T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone + core::fmt::Debug,
 {
     pub fn new(path: impl AsRef<std::path::Path>) -> Self {
+        
         let db = Database::open(path.as_ref(), {
             let mut opts = Options::new();
             opts.create_if_missing = true;

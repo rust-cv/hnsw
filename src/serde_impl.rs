@@ -1,4 +1,4 @@
-use crate::hnsw::nodes::NeighborNodes;
+use crate::nodes::NeighborNodes;
 use core::fmt;
 use serde::{
     de::{Error, Expected, SeqAccess, Visitor},
@@ -36,7 +36,7 @@ impl<'de, const N: usize> Visitor<'de> for NeighborNodesVisitor<N> {
     where
         S: SeqAccess<'de>,
     {
-        let mut neighbors = [(0, f32::MAX); N];
+        let mut neighbors = [(0, u32::MAX); N];
         let mut position = 0;
 
         while let Some(n) = seq.next_element()? {
