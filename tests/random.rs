@@ -47,7 +47,7 @@ fn random() {
         neighbors
     };
 
-    let features: Vec<_> = {
+    let expect_features: Vec<_> = {
         use hnsw::metric::Metric as _;
 
         let euclidean_distance = SimpleEuclidean;
@@ -67,7 +67,7 @@ fn random() {
 
     let matches = neighbors
         .iter()
-        .filter(|neighbor| features.contains(neighbor))
+        .filter(|neighbor| expect_features.contains(neighbor))
         .count();
 
     println!(
@@ -76,5 +76,5 @@ fn random() {
         neighbors.len(),
     );
 
-    assert!(matches as f32 / features.len() as f32 >= 0.9);
+    assert!(matches as f32 / neighbors.len() as f32 >= 0.9);
 }
