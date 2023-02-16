@@ -40,9 +40,10 @@ pub struct SimpleEuclidean;
 impl Metric<Vec<f32>> for SimpleEuclidean {
     type Unit = EncodableFloat;
     fn distance(&self, lhs: &Vec<f32>, rhs: &Vec<f32>) -> EncodableFloat {
-        let value = lhs.iter()
+        let value = lhs
+            .iter()
             .zip(rhs.iter())
-            .map(|(&l, &r)| (l-r).powi(2))
+            .map(|(&l, &r)| (l - r).powi(2))
             .sum::<f32>()
             .sqrt();
         EncodableFloat { value }

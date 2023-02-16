@@ -1,6 +1,9 @@
 //! Useful tests for debugging since they are hand-written and easy to see the debugging output.
 
-use hnsw::{Hnsw, Searcher, metric::{SimpleEuclidean, Neighbor, EncodableFloat}};
+use hnsw::{
+    metric::{EncodableFloat, Neighbor, SimpleEuclidean},
+    Hnsw, Searcher,
+};
 use rand_pcg::Pcg64;
 
 fn test_hnsw() -> (
@@ -70,23 +73,33 @@ fn nearest_neighbor() {
             },
             Neighbor {
                 index: 1,
-                distance: EncodableFloat { value: (2.0_f32).sqrt() }
+                distance: EncodableFloat {
+                    value: (2.0_f32).sqrt()
+                }
             },
             Neighbor {
                 index: 2,
-                distance: EncodableFloat { value: (2.0_f32).sqrt() }
+                distance: EncodableFloat {
+                    value: (2.0_f32).sqrt()
+                }
             },
             Neighbor {
                 index: 3,
-                distance: EncodableFloat { value: (2.0_f32).sqrt() }
+                distance: EncodableFloat {
+                    value: (2.0_f32).sqrt()
+                }
             },
             Neighbor {
                 index: 5,
-                distance: EncodableFloat { value: (3.0_f32).sqrt() }
+                distance: EncodableFloat {
+                    value: (3.0_f32).sqrt()
+                }
             },
             Neighbor {
                 index: 6,
-                distance: EncodableFloat { value: (3.0_f32).sqrt() }
+                distance: EncodableFloat {
+                    value: (3.0_f32).sqrt()
+                }
             }
         ]
     );

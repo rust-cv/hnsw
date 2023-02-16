@@ -2,9 +2,9 @@ extern crate alloc;
 
 pub mod hnsw;
 pub mod metric;
-mod storage;
 mod nodes;
 mod serde_impl;
+mod storage;
 
 pub use self::hnsw::*;
 use self::metric::Neighbor;
