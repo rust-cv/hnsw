@@ -85,7 +85,8 @@ where
             Some(ep) => Some(ep),
             None => Some(node.id as i32),
         };
-        return self.put(node);
+
+        self.put(node)
     }
 
     pub fn put(&mut self, node: crate::nodes::Node<T, M, M0>) -> Result<(), Error> {
@@ -111,6 +112,7 @@ where
         self.save_metadata()
     }
 
+    #[allow(dead_code)]
     pub fn load_meta_data(&mut self) -> Result<Option<crate::nodes::Node<T, M, M0>>, Error> {
         match self.meta_data.entry_point {
             Some(ep) => self.get(ep),

@@ -26,10 +26,10 @@ pub struct Params {
 
 impl Params {
     pub fn new(dbpath: String) -> Self {
-        return Params {
+        Self {
             dbpath: dbpath.into(),
             ef_construction: 0,
-        };
+        }
     }
 
     /// This is refered to as `efConstruction` in the paper. This is equivalent to the `ef` parameter passed

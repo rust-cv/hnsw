@@ -214,8 +214,8 @@ where
             let candidate_node = self
                 .storage
                 .get(index as i32)
-                .expect(format!("unknown node id: {}", index).as_str())
-                .expect(format!("unknown node id: {}", index).as_str());
+                .expect("unknown node id")
+                .expect("unknown node id");
 
             candidate_node.neighbors[layer_idx]
                 .neighbors()
@@ -223,8 +223,8 @@ where
                     let neighbor_node = self
                         .storage
                         .get(nidx.0 as i32)
-                        .expect(format!("unknown node id: {}", index).as_str())
-                        .expect(format!("unknown node id: {}", index).as_str());
+                        .expect("unknown node id")
+                        .expect("unknown node id");
                     if searcher.seen.insert(nidx.0) {
                         let d = self.metric.distance(q, &neighbor_node.feature);
                         let pos = searcher.nearest.partition_point(|n| n.distance <= d);
@@ -249,15 +249,15 @@ where
             let candidate_node = self
                 .storage
                 .get(index as i32)
-                .expect(format!("unknown node id: {}", index).as_str())
-                .expect(format!("unknown node id: {}", index).as_str());
+                .expect("unknown node id")
+                .expect("unknown node id");
 
             candidate_node.zero_neighbors.neighbors().for_each(|nidx| {
                 let neighbor_node = self
                     .storage
                     .get(nidx.0 as i32)
-                    .expect(format!("unknown node id: {}", index).as_str())
-                    .expect(format!("unknown node id: {}", index).as_str());
+                    .expect("unknown node id")
+                    .expect("unknown node id");
                 if searcher.seen.insert(nidx.0) {
                     let d = self.metric.distance(q, &neighbor_node.feature);
                     let pos = searcher.nearest.partition_point(|n| n.distance <= d);
@@ -274,10 +274,10 @@ where
 
     fn go_down_layer(&self, searcher: &mut Searcher<Met::Unit>) {
         searcher.candidates.clear();
-        let next = searcher.nearest.first().unwrap().clone();
+        let next = *searcher.nearest.first().unwrap();
         searcher.nearest.clear();
 
-        searcher.nearest.push(next.clone());
+        searcher.nearest.push(next);
         searcher.candidates.push(next);
     }
 
