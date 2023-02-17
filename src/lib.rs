@@ -7,10 +7,8 @@ mod serde_impl;
 mod storage;
 
 pub use self::hnsw::*;
-use self::metric::Neighbor;
 
 use ahash::RandomState;
-use alloc::{vec, vec::Vec};
 use hashbrown::HashSet;
 use storage::NodeDB;
 
@@ -51,36 +49,6 @@ impl Default for Params {
         Self {
             dbpath: "/tmp/hnsw.db".into(),
             ef_construction: 400,
-        }
-    }
-}
-
-/// Contains all the state used when searching the HNSW
-#[derive(Clone, Debug)]
-pub struct Searcher<Metric> {
-    candidates: Vec<Neighbor<Metric>>,
-    nearest: Vec<Neighbor<Metric>>,
-    seen: HashSet<usize, RandomState>,
-}
-
-impl<Metric> Searcher<Metric> {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    fn clear(&mut self) {
-        self.candidates.clear();
-        self.nearest.clear();
-        self.seen.clear();
-    }
-}
-
-impl<Metric> Default for Searcher<Metric> {
-    fn default() -> Self {
-        Self {
-            candidates: vec![],
-            nearest: vec![],
-            seen: HashSet::with_hasher(RandomState::with_seeds(0, 0, 0, 0)),
         }
     }
 }

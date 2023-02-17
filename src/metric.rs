@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct EncodableFloat {
     pub value: f32,
 }
@@ -18,12 +18,6 @@ impl From<EncodableFloat> for u32 {
 }
 
 impl Eq for EncodableFloat {}
-
-impl PartialOrd for EncodableFloat {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
 
 impl Ord for EncodableFloat {
     fn cmp(&self, rhs: &EncodableFloat) -> core::cmp::Ordering {

@@ -2,15 +2,11 @@
 
 use hnsw::{
     metric::{EncodableFloat, Neighbor, SimpleEuclidean},
-    Hnsw, Searcher,
+    Hnsw,
 };
 use rand_pcg::Pcg64;
 
-fn test_hnsw() -> (
-    Hnsw<SimpleEuclidean, Vec<f32>, Pcg64, 12, 24>,
-    Searcher<EncodableFloat>,
-) {
-    let mut searcher = Searcher::default();
+fn test_hnsw() -> Hnsw<SimpleEuclidean, Vec<f32>, Pcg64, 12, 24> {
     let mut hnsw = Hnsw::new(SimpleEuclidean);
 
     let features = [
@@ -25,11 +21,10 @@ fn test_hnsw() -> (
     ];
 
     for feature in features {
-        //let n = hnsw.insert(feature, &mut searcher);
-        //println!("{}", n);
+        hnsw.insert(feature);
     }
 
-    (hnsw, searcher)
+    hnsw
 }
 
 #[test]
@@ -39,23 +34,17 @@ fn insertion() {
 
 #[test]
 fn nearest_neighbor() {
-    let (mut hnsw, mut searcher) = test_hnsw();
-    let searcher = &mut searcher;
-    let mut neighbors = [Neighbor {
-        index: 0,
-        distance: EncodableFloat { value: f32::MAX },
-    }; 8];
-
+    let mut hnsw = test_hnsw();
     let input = vec![0.0, 0.0, 0.0, 1.0];
-    hnsw.nearest(&input, 24, searcher, &mut neighbors);
-    println!("{:?}", searcher);
+    let mut neighbors: Vec<_> = hnsw.nearest(&input, 24).drain(0..8).collect();
+
     // Distance 1
     neighbors[1..3].sort_unstable();
     // Distance 2
     neighbors[3..6].sort_unstable();
     // Distance 3
     neighbors[6..8].sort_unstable();
-    hnsw.dump();
+
     assert_eq!(
         neighbors,
         [
