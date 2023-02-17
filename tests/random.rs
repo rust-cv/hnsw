@@ -35,7 +35,7 @@ fn random() {
             hnsw.insert(feature);
         }
 
-        hnsw.nearest(&query, 24).drain(0..TAKE_NEIGHBORS).collect()
+        hnsw.nearest(&query, 24, TAKE_NEIGHBORS)
     };
 
     let expect_neighbors: Vec<_> = {

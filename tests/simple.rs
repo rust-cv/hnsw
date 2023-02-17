@@ -36,7 +36,7 @@ fn insertion() {
 fn nearest_neighbor() {
     let mut hnsw = test_hnsw();
     let input = vec![0.0, 0.0, 0.0, 1.0];
-    let mut neighbors: Vec<_> = hnsw.nearest(&input, 24).drain(0..8).collect();
+    let mut neighbors: Vec<_> = hnsw.nearest(&input, 24, 8);
 
     // Distance 1
     neighbors[1..3].sort_unstable();

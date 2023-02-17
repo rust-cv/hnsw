@@ -182,8 +182,8 @@ where
         self.storage.num_node() - 1
     }
 
-    pub fn nearest<'a>(&mut self, q: &T, ef: usize) -> Vec<Neighbor<Met::Unit>> {
-        self.search_layer(q, ef, 0)
+    pub fn nearest<'a>(&mut self, q: &T, ef: usize, take: usize) -> Vec<Neighbor<Met::Unit>> {
+        self.search_layer(q, ef, 0).into_iter().take(take).collect()
     }
 
     pub fn search_layer<'a>(&mut self, q: &T, ef: usize, level: usize) -> Vec<Neighbor<Met::Unit>> {
