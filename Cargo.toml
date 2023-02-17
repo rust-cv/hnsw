@@ -1,6 +1,6 @@
 [package]
-name = "hnswdb"
-version = "0.1"
+name = "hnsw"
+version = "0.11.1-alpha.0"
 authors = ["Geordon Worley <vadixidav@gmail.com>"]
 edition = "2018"
 description = "Fast approximate nearest neighbors"
