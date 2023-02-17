@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use crate::hnsw::nodes::{NeighborNodes, Node};
-use crate::metric::{Neighbor, Metric};
+use crate::metric::{Metric, Neighbor};
 use crate::*;
 use alloc::vec;
 use rand::Rng;
@@ -43,21 +43,41 @@ where
         let params = Params::default();
         let prng = R::from_entropy();
         let storage = NodeDB::<T, M, M0>::new(&params.dbpath);
-        Self { metric, prng, storage, params }
+        Self {
+            metric,
+            prng,
+            storage,
+            params,
+        }
     }
     pub fn new_with_params(metric: Met, params: Params) -> Self {
         let prng = R::from_entropy();
         let storage = NodeDB::<T, M, M0>::new(&params.dbpath);
-        Self { metric, prng, storage, params }
+        Self {
+            metric,
+            prng,
+            storage,
+            params,
+        }
     }
     pub fn new_with_prng(metric: Met, prng: R) -> Self {
         let params = Params::default();
         let storage = NodeDB::<T, M, M0>::new(&params.dbpath);
-        Self { metric, prng, storage, params }
+        Self {
+            metric,
+            prng,
+            storage,
+            params,
+        }
     }
     pub fn new_with_params_and_prng(metric: Met, params: Params, prng: R) -> Self {
         let storage = NodeDB::<T, M, M0>::new(&params.dbpath);
-        Self { metric, prng, storage, params }
+        Self {
+            metric,
+            prng,
+            storage,
+            params,
+        }
     }
 }
 
@@ -93,7 +113,7 @@ where
                 // It's always index 0 with no neighbors since its the first feature.
                 node.neighbors.push(NeighborNodes::new());
             }
-            
+
             let _ = self.storage.update_entry_point(node.id as i32);
             let _ = self.storage.store_new_node(node);
 
@@ -183,23 +203,28 @@ where
         &mut dest[..found]
     }
 
-    fn search_single_layer(&mut self, layer_idx: usize, q: &T, searcher: &mut Searcher<Met::Unit>, cap: usize) {
+    fn search_single_layer(
+        &mut self,
+        layer_idx: usize,
+        q: &T,
+        searcher: &mut Searcher<Met::Unit>,
+        cap: usize,
+    ) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
             let candidate_node = self
                 .storage
                 .get(index as i32)
-                .expect(format!("unknown node id: {}", index).as_str())
-                .expect(format!("unknown node id: {}", index).as_str());
+                .expect("unknown node id")
+                .expect("unknown node id");
 
-            candidate_node
-                .neighbors[layer_idx]
+            candidate_node.neighbors[layer_idx]
                 .neighbors()
                 .for_each(|nidx| {
                     let neighbor_node = self
                         .storage
                         .get(nidx.0 as i32)
-                        .expect(format!("unknown node id: {}", index).as_str())
-                        .expect(format!("unknown node id: {}", index).as_str());
+                        .expect("unknown node id")
+                        .expect("unknown node id");
                     if searcher.seen.insert(nidx.0) {
                         let d = self.metric.distance(q, &neighbor_node.feature);
                         let pos = searcher.nearest.partition_point(|n| n.distance <= d);
@@ -224,38 +249,35 @@ where
             let candidate_node = self
                 .storage
                 .get(index as i32)
-                .expect(format!("unknown node id: {}", index).as_str())
-                .expect(format!("unknown node id: {}", index).as_str());
+                .expect("unknown node id")
+                .expect("unknown node id");
 
-            candidate_node
-                .zero_neighbors
-                .neighbors()
-                .for_each(|nidx| {
-                    let neighbor_node = self
-                        .storage
-                        .get(nidx.0 as i32)
-                        .expect(format!("unknown node id: {}", index).as_str())
-                        .expect(format!("unknown node id: {}", index).as_str());
-                    if searcher.seen.insert(nidx.0) {
-                        let d = self.metric.distance(q, &neighbor_node.feature);
-                        let pos = searcher.nearest.partition_point(|n| n.distance <= d);
-                        let new_candidate = Neighbor {
-                            index: nidx.0,
-                            distance: d,
-                        };
-                        searcher.nearest.insert(pos, new_candidate);
-                        searcher.candidates.push(new_candidate);
-                    }
-                });
+            candidate_node.zero_neighbors.neighbors().for_each(|nidx| {
+                let neighbor_node = self
+                    .storage
+                    .get(nidx.0 as i32)
+                    .expect("unknown node id")
+                    .expect("unknown node id");
+                if searcher.seen.insert(nidx.0) {
+                    let d = self.metric.distance(q, &neighbor_node.feature);
+                    let pos = searcher.nearest.partition_point(|n| n.distance <= d);
+                    let new_candidate = Neighbor {
+                        index: nidx.0,
+                        distance: d,
+                    };
+                    searcher.nearest.insert(pos, new_candidate);
+                    searcher.candidates.push(new_candidate);
+                }
+            });
         }
     }
 
     fn go_down_layer(&self, searcher: &mut Searcher<Met::Unit>) {
         searcher.candidates.clear();
-        let next = searcher.nearest.first().unwrap().clone();
+        let next = *searcher.nearest.first().unwrap();
         searcher.nearest.clear();
 
-        searcher.nearest.push(next.clone());
+        searcher.nearest.push(next);
         searcher.candidates.push(next);
     }
 
@@ -279,43 +301,41 @@ where
         (-libm::log2(uniform) * libm::log2(M as f64).recip()) as usize
     }
 
-    fn update_neighbors(&mut self, node: &Node<T, M, M0>, nearest: &[Neighbor<Met::Unit>], layer: usize) {
-        nearest.iter()
-               .for_each(|id| {
-                    if let Ok(Some(mut n)) = self.storage.get(id.index as i32) {
-                        self.add_neighbor(&node.feature, node.id, &mut n, layer);
-                        let _ = self.storage.put(n);
-                    }
-               });
+    fn update_neighbors(
+        &mut self,
+        node: &Node<T, M, M0>,
+        nearest: &[Neighbor<Met::Unit>],
+        layer: usize,
+    ) {
+        nearest.iter().for_each(|id| {
+            if let Ok(Some(mut n)) = self.storage.get(id.index as i32) {
+                self.add_neighbor(&node.feature, node.id, &mut n, layer);
+                let _ = self.storage.put(n);
+            }
+        });
     }
 
     fn add_neighbor_internal<const MM: usize>(
-                                &mut self,
-                                 node_ix: usize,
-                                 target: &mut NeighborNodes<MM>,
-                                 distance: Met::Unit,
-                                 ) {
+        &mut self,
+        node_ix: usize,
+        target: &mut NeighborNodes<MM>,
+        distance: Met::Unit,
+    ) {
         let insert_point = target
-                                    .neighbors
-                                    .partition_point(|&n| Met::Unit::from(n.1) < distance);
+            .neighbors
+            .partition_point(|&n| Met::Unit::from(n.1) < distance);
         let mut buf = (0, u32::MAX);
         for i in 0..MM {
             let curr = target.neighbors[i];
             target.neighbors[i] = match i.cmp(&insert_point) {
-                Ordering::Equal => {
-                    (node_ix, distance.into())
-                },
-                Ordering::Greater => {
-                    buf
-                },
-                Ordering::Less => {
-                    target.neighbors[i]
-                }
+                Ordering::Equal => (node_ix, distance.into()),
+                Ordering::Greater => buf,
+                Ordering::Less => target.neighbors[i],
             };
             buf = curr;
         }
     }
-    fn add_neighbor(&mut self, q: &T, node_ix: usize, target : &mut Node<T, M, M0>, layer: usize) {
+    fn add_neighbor(&mut self, q: &T, node_ix: usize, target: &mut Node<T, M, M0>, layer: usize) {
         let distance = self.metric.distance(q, &target.feature);
         if layer == 0 {
             self.add_neighbor_internal(node_ix, &mut target.zero_neighbors, distance);
@@ -323,7 +343,7 @@ where
             self.add_neighbor_internal(node_ix, &mut target.neighbors[layer], distance);
         };
     }
-    
+
     pub fn dump(&mut self) {
         for i in 0..self.storage.num_node() {
             println!("{:?}", self.storage.get(i as i32));

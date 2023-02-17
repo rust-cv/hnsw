@@ -52,7 +52,6 @@ where
     T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone + core::fmt::Debug,
 {
     pub fn new(path: impl AsRef<std::path::Path>) -> Self {
-        
         let db = Database::open(path.as_ref(), {
             let mut opts = Options::new();
             opts.create_if_missing = true;
@@ -63,25 +62,31 @@ where
 
         let cache = LruCache::new(NonZeroUsize::new(10000).unwrap());
         let meta_data = match db.get(ReadOptions::new(), META_DATA_KEY) {
-            Ok(Some(data)) => {
-                rmp_serde::from_slice(&data[..]).unwrap()
+            Ok(Some(data)) => rmp_serde::from_slice(&data[..]).unwrap(),
+            _ => MetaData {
+                entry_point: None,
+                num_nodes: None,
             },
-            _ => MetaData { entry_point: None, num_nodes: None },
         };
 
-        NodeDB { meta_data, db, cache }
+        NodeDB {
+            meta_data,
+            db,
+            cache,
+        }
     }
 
     pub fn store_new_node(&mut self, node: crate::nodes::Node<T, M, M0>) -> Result<(), Error> {
         self.meta_data.num_nodes = match self.meta_data.num_nodes {
-            Some(n) => Some(n+1),
+            Some(n) => Some(n + 1),
             None => Some(1),
         };
         self.meta_data.entry_point = match self.meta_data.entry_point {
             Some(ep) => Some(ep),
             None => Some(node.id as i32),
         };
-        return self.put(node);
+
+        self.put(node)
     }
 
     pub fn put(&mut self, node: crate::nodes::Node<T, M, M0>) -> Result<(), Error> {
@@ -107,6 +112,7 @@ where
         self.save_metadata()
     }
 
+    #[allow(dead_code)]
     pub fn load_meta_data(&mut self) -> Result<Option<crate::nodes::Node<T, M, M0>>, Error> {
         match self.meta_data.entry_point {
             Some(ep) => self.get(ep),
@@ -115,7 +121,7 @@ where
     }
 
     pub fn load_entry_point_node(&mut self) -> Option<crate::nodes::Node<T, M, M0>> {
-        if let Some(ep) = self.meta_data.entry_point { 
+        if let Some(ep) = self.meta_data.entry_point {
             match self.get(ep) {
                 Ok(Some(node)) => Some(node),
                 _ => None,
@@ -129,7 +135,7 @@ where
         if let Some(ep) = self.meta_data.entry_point {
             match self.get(ep) {
                 Ok(Some(node)) => node.neighbors.len(),
-                _ => 0
+                _ => 0,
             }
         } else {
             0
