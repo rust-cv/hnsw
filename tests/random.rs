@@ -1,6 +1,6 @@
 use hnsw::{
-    metric::{EncodableFloat, Neighbor, SimpleEuclidean},
-    Hnsw, Searcher,
+    metric::{Neighbor, SimpleEuclidean},
+    Hnsw,
 };
 use rand_pcg::Pcg64;
 
@@ -8,8 +8,6 @@ use rand_pcg::Pcg64;
 fn random() {
     const PUT_SAMPLES: usize = 1_000;
     const TAKE_NEIGHBORS: usize = 100;
-
-    let mut searcher = Searcher::default();
 
     let (features, query): (Vec<_>, _) = {
         use rand::Rng as _;
@@ -31,23 +29,16 @@ fn random() {
         )
     };
 
-    let neighbors = {
+    let neighbors: Vec<_> = {
         let mut hnsw = Hnsw::<_, Vec<f32>, Pcg64, 12, 24>::new(SimpleEuclidean);
         for feature in features.clone() {
-            hnsw.insert(feature, &mut searcher);
+            hnsw.insert(feature);
         }
 
-        let mut neighbors = [Neighbor {
-            index: 0,
-            distance: EncodableFloat { value: f32::MAX },
-        }; TAKE_NEIGHBORS];
-
-        hnsw.nearest(&query, 24, &mut searcher, &mut neighbors);
-
-        neighbors
+        hnsw.nearest(&query, 24, TAKE_NEIGHBORS)
     };
 
-    let expect_features: Vec<_> = {
+    let expect_neighbors: Vec<_> = {
         use hnsw::metric::Metric as _;
 
         let euclidean_distance = SimpleEuclidean;
@@ -67,7 +58,7 @@ fn random() {
 
     let matches = neighbors
         .iter()
-        .filter(|neighbor| expect_features.contains(neighbor))
+        .filter(|neighbor| expect_neighbors.contains(neighbor))
         .count();
 
     println!(

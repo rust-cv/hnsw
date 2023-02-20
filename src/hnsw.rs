@@ -9,6 +9,30 @@ use rand_core::{RngCore, SeedableRng};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// Contains all the state used when searching the HNSW
+#[derive(Clone, Debug)]
+struct Searcher<Metric> {
+    candidates: Vec<Neighbor<Metric>>,
+    nearest: Vec<Neighbor<Metric>>,
+    seen: HashSet<usize, RandomState>,
+}
+
+impl<Metric> Searcher<Metric> {
+    pub fn new() -> Self {
+        Self {
+            candidates: vec![],
+            nearest: vec![],
+            seen: HashSet::with_hasher(RandomState::with_seeds(0, 0, 0, 0)),
+        }
+    }
+
+    fn clear(&mut self) {
+        self.candidates.clear();
+        self.nearest.clear();
+        self.seen.clear();
+    }
+}
+
 /// This provides a HNSW implementation for any distance function.
 ///
 /// The type `T` must implement [`space::Metric`] to get implementations.
@@ -89,10 +113,9 @@ where
     T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone + core::fmt::Debug,
 {
     /// Inserts a feature into the HNSW.
-    pub fn insert(&mut self, q: T, searcher: &mut Searcher<Met::Unit>) -> usize {
+    pub fn insert(&mut self, q: T) -> usize {
         // Get the level of this feature.
         let level = self.random_level();
-        println!("level {}", level);
         let mut cap = if level >= self.storage.num_layer() {
             self.params.ef_construction
         } else {
@@ -121,14 +144,14 @@ where
         }
 
         node.id = self.storage.meta_data.num_nodes.unwrap() as usize;
-        self.initialize_searcher(&node.feature, searcher);
+        let mut searcher = self.initialize_searcher(&node.feature);
 
         // Find the entry point on the level it was created by searching normally until its level.
         for ix in (level..self.storage.num_layer()).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_single_layer(ix, &node.feature, searcher, cap);
+            self.search_single_layer(ix, &node.feature, &mut searcher, cap);
             // Then lower the search only after we create the node.
-            self.go_down_layer(searcher);
+            self.go_down_layer(&mut searcher);
             cap = if ix == level {
                 self.params.ef_construction
             } else {
@@ -139,16 +162,16 @@ where
         // Then start from its level and connect it to its nearest neighbors.
         for ix in (0..core::cmp::min(level, self.storage.num_layer())).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_single_layer(ix, &node.feature, searcher, cap);
+            self.search_single_layer(ix, &node.feature, &mut searcher, cap);
             // Then use the results of that search on this layer to connect the nodes.
             self.update_neighbors(&node, &searcher.nearest, ix + 1);
             // Then lower the search only after we create the node.
-            self.go_down_layer(searcher);
+            self.go_down_layer(&mut searcher);
             cap = self.params.ef_construction;
         }
 
         // Also search and connect the node to the zero layer.
-        self.search_zero_layer(&node.feature, searcher, cap);
+        self.search_zero_layer(&node.feature, &mut searcher, cap);
         self.update_neighbors(&node, &searcher.nearest, 0);
 
         if self.storage.num_layer() < node.neighbors.len() {
@@ -159,48 +182,31 @@ where
         self.storage.num_node() - 1
     }
 
-    pub fn nearest<'a>(
-        &mut self,
-        q: &T,
-        ef: usize,
-        searcher: &mut Searcher<Met::Unit>,
-        dest: &'a mut [Neighbor<Met::Unit>],
-    ) -> &'a mut [Neighbor<Met::Unit>] {
-        self.search_layer(q, ef, 0, searcher, dest)
+    pub fn nearest<'a>(&mut self, q: &T, ef: usize, take: usize) -> Vec<Neighbor<Met::Unit>> {
+        self.search_layer(q, ef, 0).into_iter().take(take).collect()
     }
 
-    pub fn search_layer<'a>(
-        &mut self,
-        q: &T,
-        ef: usize,
-        level: usize,
-        searcher: &mut Searcher<Met::Unit>,
-        dest: &'a mut [Neighbor<Met::Unit>],
-    ) -> &'a mut [Neighbor<Met::Unit>] {
+    pub fn search_layer<'a>(&mut self, q: &T, ef: usize, level: usize) -> Vec<Neighbor<Met::Unit>> {
         // If there is nothing in here, then just return nothing.
         if self.storage.num_node() == 0 || level > self.storage.num_layer() {
-            return &mut [];
+            return vec![];
         }
 
-        self.initialize_searcher(q, searcher);
+        let mut searcher = self.initialize_searcher(q);
         let cap = 1;
         for idx in (0..self.storage.num_layer()).rev() {
-            self.search_single_layer(idx, q, searcher, cap);
+            self.search_single_layer(idx, q, &mut searcher, cap);
             if idx + 1 == level {
-                let found = core::cmp::min(dest.len(), searcher.nearest.len());
-                dest.copy_from_slice(&searcher.nearest[..found]);
-                return &mut dest[..found];
+                return searcher.nearest;
             }
-            self.go_down_layer(searcher);
+            self.go_down_layer(&mut searcher);
         }
 
         let cap = ef;
 
-        self.search_zero_layer(q, searcher, cap);
+        self.search_zero_layer(q, &mut searcher, cap);
 
-        let found = core::cmp::min(dest.len(), searcher.nearest.len());
-        dest[..found].copy_from_slice(&searcher.nearest[..found]);
-        &mut dest[..found]
+        return searcher.nearest;
     }
 
     fn search_single_layer(
@@ -281,7 +287,8 @@ where
         searcher.candidates.push(next);
     }
 
-    fn initialize_searcher(&mut self, q: &T, searcher: &mut Searcher<Met::Unit>) {
+    fn initialize_searcher(&mut self, q: &T) -> Searcher<Met::Unit> {
+        let mut searcher = Searcher::new();
         let ep = self.storage.load_entry_point_node().unwrap();
         searcher.clear();
         // Add the entry point.
@@ -293,6 +300,8 @@ where
         searcher.candidates.push(candidate);
         searcher.nearest.push(candidate);
         searcher.seen.insert(0);
+
+        searcher
     }
 
     /// Generates a correctly distributed random level as per Algorithm 1 line 4 of the paper.
