@@ -29,11 +29,6 @@ fn test_hnsw() -> Hnsw<SimpleEuclidean, Vec<f32>, Pcg64, 12, 24> {
 }
 
 #[test]
-fn insertion() {
-    test_hnsw();
-}
-
-#[test]
 fn nearest_neighbor() {
     let mut hnsw = test_hnsw();
     let input = vec![0.0, 0.0, 0.0, 1.0];
