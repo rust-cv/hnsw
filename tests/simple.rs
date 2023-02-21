@@ -2,8 +2,7 @@
 
 use hnsw::{
     metric::{EncodableFloat, Neighbor, SimpleEuclidean},
-    Hnsw,
-    Params,
+    Hnsw, Params,
 };
 use rand_pcg::Pcg64;
 
