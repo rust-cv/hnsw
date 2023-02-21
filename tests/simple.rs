@@ -3,11 +3,13 @@
 use hnsw::{
     metric::{EncodableFloat, Neighbor, SimpleEuclidean},
     Hnsw,
+    Params,
 };
 use rand_pcg::Pcg64;
 
 fn test_hnsw() -> Hnsw<SimpleEuclidean, Vec<f32>, Pcg64, 12, 24> {
-    let mut hnsw = Hnsw::new(SimpleEuclidean);
+    let params = Params::new("/tmp/simple.db".into());
+    let mut hnsw = Hnsw::new_with_params(SimpleEuclidean, params);
 
     let features = [
         vec![0.0, 0.0, 0.0, 1.0],
