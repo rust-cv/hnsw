@@ -19,6 +19,7 @@ impl From<EncodableFloat> for u32 {
 
 impl Eq for EncodableFloat {}
 
+#[allow(clippy::derive_ord_xor_partial_ord)]
 impl Ord for EncodableFloat {
     fn cmp(&self, rhs: &EncodableFloat) -> core::cmp::Ordering {
         if let Some(o) = self.partial_cmp(rhs) {

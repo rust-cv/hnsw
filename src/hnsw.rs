@@ -182,11 +182,11 @@ where
         self.storage.num_node() - 1
     }
 
-    pub fn nearest<'a>(&mut self, q: &T, ef: usize, take: usize) -> Vec<Neighbor<Met::Unit>> {
+    pub fn nearest(&mut self, q: &T, ef: usize, take: usize) -> Vec<Neighbor<Met::Unit>> {
         self.search_layer(q, ef, 0).into_iter().take(take).collect()
     }
 
-    pub fn search_layer<'a>(&mut self, q: &T, ef: usize, level: usize) -> Vec<Neighbor<Met::Unit>> {
+    pub fn search_layer(&mut self, q: &T, ef: usize, level: usize) -> Vec<Neighbor<Met::Unit>> {
         // If there is nothing in here, then just return nothing.
         if self.storage.num_node() == 0 || level > self.storage.num_layer() {
             return vec![];
@@ -206,7 +206,7 @@ where
 
         self.search_zero_layer(q, &mut searcher, cap);
 
-        return searcher.nearest;
+        searcher.nearest
     }
 
     fn search_single_layer(
@@ -349,7 +349,7 @@ where
         if layer == 0 {
             self.add_neighbor_internal(node_ix, &mut target.zero_neighbors, distance);
         } else {
-            self.add_neighbor_internal(node_ix, &mut target.neighbors[layer-1], distance);
+            self.add_neighbor_internal(node_ix, &mut target.neighbors[layer - 1], distance);
         };
     }
 
