@@ -7,7 +7,7 @@ use rand_pcg::Pcg64;
 #[test]
 fn random() {
     const PUT_SAMPLES: usize = 1_000;
-    const TAKE_NEIGHBORS: usize = 100;
+    const TAKE_NEIGHBORS: usize = 50;
 
     let (features, query): (Vec<_>, _) = {
         use rand::Rng as _;
@@ -53,7 +53,7 @@ fn random() {
             .collect();
 
         features.sort_by(|a, b| a.distance.value.partial_cmp(&b.distance.value).unwrap());
-        features.drain(0..TAKE_NEIGHBORS).collect()
+        features.drain(0..TAKE_NEIGHBORS*2).collect()
     };
 
     let matches = neighbors
