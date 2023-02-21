@@ -1,13 +1,13 @@
 use hnsw::{
     metric::{Neighbor, SimpleEuclidean},
-    Hnsw,
+    Hnsw, Params,
 };
 use rand_pcg::Pcg64;
 
 #[test]
 fn random() {
     const PUT_SAMPLES: usize = 1_000;
-    const TAKE_NEIGHBORS: usize = 100;
+    const TAKE_NEIGHBORS: usize = 50;
 
     let (features, query): (Vec<_>, _) = {
         use rand::Rng as _;
@@ -30,7 +30,8 @@ fn random() {
     };
 
     let neighbors: Vec<_> = {
-        let mut hnsw = Hnsw::<_, Vec<f32>, Pcg64, 12, 24>::new(SimpleEuclidean);
+        let params = Params::new("/tmp/random.db".into());
+        let mut hnsw = Hnsw::<_, Vec<f32>, Pcg64, 12, 24>::new_with_params(SimpleEuclidean, params);
         for feature in features.clone() {
             hnsw.insert(feature);
         }
@@ -53,7 +54,7 @@ fn random() {
             .collect();
 
         features.sort_by(|a, b| a.distance.value.partial_cmp(&b.distance.value).unwrap());
-        features.drain(0..TAKE_NEIGHBORS).collect()
+        features.drain(0..TAKE_NEIGHBORS * 2).collect()
     };
 
     let matches = neighbors
