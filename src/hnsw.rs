@@ -349,7 +349,7 @@ where
         if layer == 0 {
             self.add_neighbor_internal(node_ix, &mut target.zero_neighbors, distance);
         } else {
-            self.add_neighbor_internal(node_ix, &mut target.neighbors[layer], distance);
+            self.add_neighbor_internal(node_ix, &mut target.neighbors[layer-1], distance);
         };
     }
 
