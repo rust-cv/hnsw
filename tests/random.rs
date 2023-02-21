@@ -53,7 +53,7 @@ fn random() {
             .collect();
 
         features.sort_by(|a, b| a.distance.value.partial_cmp(&b.distance.value).unwrap());
-        features.drain(0..TAKE_NEIGHBORS*2).collect()
+        features.drain(0..TAKE_NEIGHBORS * 2).collect()
     };
 
     let matches = neighbors
