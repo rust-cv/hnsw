@@ -37,6 +37,72 @@ impl From<leveldb::error::Error> for Error {
         Self::LevelDB(e)
     }
 }
+pub trait Storage<T, const M: usize, const M0: usize>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned + Clone + std::fmt::Debug,
+{
+    fn num_layer(&self) -> usize;
+    fn num_node(&self) -> usize;
+    fn update_entry_point(&mut self, id: i32);
+    fn load_entry_point_node(&self) -> Option<Node<T, M, M0>>;
+    fn store_new_node(&mut self, node: Node<T, M, M0>) -> Result<(), Error>;
+    fn meta_data(&self) -> &MetaData;
+    fn get(&self, id: i32) -> Result<Option<Node<T, M, M0>>, Error>;
+    fn put(&mut self, node: Node<T, M, M0>) -> Result<(), Error>;
+}
+
+pub struct HashMap<T, const M: usize, const M0: usize>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned + Clone + std::fmt::Debug,
+{
+    pub map: std::collections::HashMap<i32, Node<T, M, M0>>,
+    pub meta_data: MetaData,
+}
+
+impl<T, const M: usize, const M0: usize> Storage<T, M, M0> for HashMap<T, M, M0>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned + Clone + std::fmt::Debug,
+{
+    fn num_layer(&self) -> usize {
+        self.load_entry_point_node()
+            .map_or(0, |node| node.neighbors.len())
+    }
+
+    fn num_node(&self) -> usize {
+        self.meta_data.num_nodes.unwrap_or(0) as usize
+    }
+
+    fn update_entry_point(&mut self, id: i32) {
+        self.meta_data.entry_point = Some(id);
+    }
+
+    fn load_entry_point_node(&self) -> Option<Node<T, M, M0>> {
+        self.meta_data
+            .entry_point
+            .and_then(|ep| self.map.get(&ep).cloned())
+    }
+
+    fn store_new_node(&mut self, node: Node<T, M, M0>) -> Result<(), Error> {
+        self.meta_data.num_nodes = Some(self.meta_data.num_nodes.map_or(1, |num| num + 1));
+        self.meta_data.entry_point.get_or_insert(node.id as i32);
+
+        self.put(node)
+    }
+
+    fn meta_data(&self) -> &MetaData {
+        &self.meta_data
+    }
+
+    fn get(&self, id: i32) -> Result<Option<Node<T, M, M0>>, Error> {
+        Ok(self.map.get(&id).cloned())
+    }
+
+    fn put(&mut self, node: Node<T, M, M0>) -> Result<(), Error> {
+        self.map.insert(node.id as i32, node);
+
+        Ok(())
+    }
+}
 
 pub struct NodeDB<T, const M: usize, const M0: usize>
 where

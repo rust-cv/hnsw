@@ -1,6 +1,6 @@
 use hnsw::{
     metric::{Neighbor, SimpleEuclidean},
-    Hnsw, Params,
+    Hnsw,
 };
 use rand_pcg::Pcg64;
 
@@ -30,8 +30,10 @@ fn random() {
     };
 
     let neighbors: Vec<_> = {
-        let params = Params::new("/tmp/random.db".into());
-        let mut hnsw = Hnsw::<_, Vec<f32>, Pcg64, 12, 24>::new_with_params(SimpleEuclidean, params);
+        let mut hnsw = Hnsw::<_, Vec<f32>, Pcg64, _, 12, 24> {
+            metric: SimpleEuclidean {},
+            ..Default::default()
+        };
         for feature in features.clone() {
             hnsw.insert(feature);
         }
