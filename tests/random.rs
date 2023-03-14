@@ -6,7 +6,9 @@ use rand_pcg::Pcg64;
 
 #[test]
 fn random() {
-    const PUT_SAMPLES: usize = 1_000;
+    // const PUT_SAMPLES: usize = 10_000;
+    let start = std::time::Instant::now();
+    const PUT_SAMPLES: usize = 5_000;
     const TAKE_NEIGHBORS: usize = 50;
 
     let (features, query): (Vec<_>, _) = {
@@ -30,10 +32,12 @@ fn random() {
     };
 
     let neighbors: Vec<_> = {
-        let mut hnsw = Hnsw::<_, Vec<f32>, Pcg64, _, 12, 24> {
-            metric: SimpleEuclidean {},
-            ..Default::default()
-        };
+        let mut hnsw = Hnsw::<_, Vec<f32>, Pcg64, _, 12, 24>::new(
+            SimpleEuclidean,
+            hnsw::storage::NodeDB::new("/tmp/test.db"),
+            // hnsw::storage::HashMap::new(),
+        );
+
         for feature in features.clone() {
             hnsw.insert(feature);
         }
@@ -71,4 +75,6 @@ fn random() {
     );
 
     assert!(matches as f32 / neighbors.len() as f32 >= 0.9);
+
+    println!("{:?}", start.elapsed());
 }

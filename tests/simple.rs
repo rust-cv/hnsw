@@ -8,10 +8,7 @@ use rand_pcg::Pcg64;
 
 fn test_hnsw() -> Hnsw<SimpleEuclidean, Vec<f32>, Pcg64, storage::HashMap<Vec<f32>, 12, 24>, 12, 24>
 {
-    let mut hnsw = Hnsw {
-        metric: SimpleEuclidean {},
-        ..Default::default()
-    };
+    let mut hnsw = Hnsw::new(SimpleEuclidean {}, storage::HashMap::new());
 
     let features = [
         vec![0.0, 0.0, 0.0, 1.0],

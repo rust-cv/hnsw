@@ -54,11 +54,60 @@ where
     <Met as Metric<T>>::Unit: Into<u32> + From<u32> + core::fmt::Debug,
     S: Storage<T, M, M0>,
 {
-    pub metric: Met,
-    pub prng: R,
-    pub storage: S,
-    pub params: Params,
-    pub _phantom: std::marker::PhantomData<T>,
+    metric: Met,
+    prng: R,
+    storage: S,
+    params: Params,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<Met, T, R, S, const M: usize, const M0: usize> Hnsw<Met, T, R, S, M, M0>
+where
+    R: RngCore + SeedableRng,
+    Met: Metric<T>,
+    <Met as Metric<T>>::Unit: Into<u32> + From<u32> + core::fmt::Debug,
+    T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone + core::fmt::Debug,
+    S: Storage<T, M, M0>,
+{
+    pub fn new(metric: Met, storage: S) -> Self {
+        Self {
+            metric,
+            prng: R::from_entropy(),
+            storage,
+            params: Params::default(),
+            _phantom: std::marker::PhantomData {},
+        }
+    }
+
+    pub fn new_with_params(metric: Met, storage: S, params: Params) -> Self {
+        Self {
+            metric: metric,
+            prng: R::from_entropy(),
+            storage,
+            params,
+            _phantom: std::marker::PhantomData {},
+        }
+    }
+
+    pub fn new_with_prng(metric: Met, prng: R, storage: S) -> Self {
+        Self {
+            metric,
+            prng,
+            storage,
+            params: Params::default(),
+            _phantom: std::marker::PhantomData {},
+        }
+    }
+
+    pub fn new_with_params_and_prng(metric: Met, params: Params, prng: R, storage: S) -> Self {
+        Self {
+            metric,
+            prng,
+            storage,
+            params,
+            _phantom: std::marker::PhantomData {},
+        }
+    }
 }
 
 impl<Met, T, R, S, const M: usize, const M0: usize> Hnsw<Met, T, R, S, M, M0>
@@ -315,30 +364,5 @@ where
             println!("{:?}", self.storage.get(i as i32));
         }
         println!("{:?}", self.storage.meta_data());
-    }
-}
-
-impl<T, R, const M: usize, const M0: usize> Default
-    for Hnsw<crate::metric::SimpleEuclidean, T, R, crate::storage::HashMap<T, M, M0>, M, M0>
-where
-    R: RngCore + SeedableRng,
-    crate::metric::SimpleEuclidean: Metric<T>,
-    <crate::metric::SimpleEuclidean as Metric<T>>::Unit: Into<u32> + From<u32> + core::fmt::Debug,
-    T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone + core::fmt::Debug,
-{
-    fn default() -> Self {
-        Self {
-            metric: crate::metric::SimpleEuclidean {},
-            prng: R::from_entropy(),
-            storage: crate::storage::HashMap {
-                map: std::collections::HashMap::new(),
-                meta_data: crate::nodes::MetaData {
-                    entry_point: None,
-                    num_nodes: None,
-                },
-            },
-            params: Params::default(),
-            _phantom: std::marker::PhantomData {},
-        }
     }
 }
