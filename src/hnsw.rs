@@ -81,7 +81,7 @@ where
 
     pub fn new_with_params(metric: Met, storage: S, params: Params) -> Self {
         Self {
-            metric: metric,
+            metric,
             prng: R::from_entropy(),
             storage,
             params,

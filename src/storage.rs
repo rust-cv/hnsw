@@ -74,6 +74,15 @@ where
     }
 }
 
+impl<T, const M: usize, const M0: usize> Default for HashMap<T, M, M0>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned + Clone + std::fmt::Debug,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T, const M: usize, const M0: usize> Storage<T, M, M0> for HashMap<T, M, M0>
 where
     T: serde::Serialize + serde::de::DeserializeOwned + Clone + std::fmt::Debug,
