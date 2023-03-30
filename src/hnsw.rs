@@ -1,8 +1,11 @@
 use std::cmp::Ordering;
 
-use crate::hnsw::nodes::{NeighborNodes, Node};
-use crate::metric::{Metric, Neighbor};
-use crate::*;
+use crate::{
+    metric::{Metric, Neighbor},
+    nodes::{NeighborNodes, Node},
+    storage::Storage,
+    HashSet, Params, RandomState,
+};
 use alloc::vec;
 use rand::Rng;
 use rand_core::{RngCore, SeedableRng};
@@ -44,73 +47,76 @@ impl<Metric> Searcher<Metric> {
         deserialize = "Met: Deserialize<'de>, T: Deserialize<'de>, R: Deserialize<'de>"
     ))
 )]
-pub struct Hnsw<Met, T, R, const M: usize, const M0: usize>
+pub struct Hnsw<Met, T, R, S, const M: usize, const M0: usize>
 where
     T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone + core::fmt::Debug,
     Met: Metric<T>,
     <Met as Metric<T>>::Unit: Into<u32> + From<u32> + core::fmt::Debug,
+    S: Storage<T, M, M0>,
 {
     metric: Met,
     prng: R,
-    storage: NodeDB<T, M, M0>,
+    storage: S,
     params: Params,
+    _phantom: std::marker::PhantomData<T>,
 }
 
-impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0>
+impl<Met, T, R, S, const M: usize, const M0: usize> Hnsw<Met, T, R, S, M, M0>
 where
     R: RngCore + SeedableRng,
-    T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone + core::fmt::Debug,
     Met: Metric<T>,
     <Met as Metric<T>>::Unit: Into<u32> + From<u32> + core::fmt::Debug,
+    T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone + core::fmt::Debug,
+    S: Storage<T, M, M0>,
 {
-    pub fn new(metric: Met) -> Self {
-        let params = Params::default();
-        let prng = R::from_entropy();
-        let storage = NodeDB::<T, M, M0>::new(&params.dbpath);
+    pub fn new(metric: Met, storage: S) -> Self {
         Self {
             metric,
-            prng,
+            prng: R::from_entropy(),
             storage,
-            params,
+            params: Params::default(),
+            _phantom: std::marker::PhantomData {},
         }
     }
-    pub fn new_with_params(metric: Met, params: Params) -> Self {
-        let prng = R::from_entropy();
-        let storage = NodeDB::<T, M, M0>::new(&params.dbpath);
+
+    pub fn new_with_params(metric: Met, storage: S, params: Params) -> Self {
         Self {
             metric,
-            prng,
+            prng: R::from_entropy(),
             storage,
             params,
+            _phantom: std::marker::PhantomData {},
         }
     }
-    pub fn new_with_prng(metric: Met, prng: R) -> Self {
-        let params = Params::default();
-        let storage = NodeDB::<T, M, M0>::new(&params.dbpath);
+
+    pub fn new_with_prng(metric: Met, prng: R, storage: S) -> Self {
         Self {
             metric,
             prng,
             storage,
-            params,
+            params: Params::default(),
+            _phantom: std::marker::PhantomData {},
         }
     }
-    pub fn new_with_params_and_prng(metric: Met, params: Params, prng: R) -> Self {
-        let storage = NodeDB::<T, M, M0>::new(&params.dbpath);
+
+    pub fn new_with_params_and_prng(metric: Met, params: Params, prng: R, storage: S) -> Self {
         Self {
             metric,
             prng,
             storage,
             params,
+            _phantom: std::marker::PhantomData {},
         }
     }
 }
 
-impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0>
+impl<Met, T, R, S, const M: usize, const M0: usize> Hnsw<Met, T, R, S, M, M0>
 where
     R: RngCore,
     Met: Metric<T>,
     <Met as Metric<T>>::Unit: Into<u32> + From<u32> + core::fmt::Debug,
     T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone + core::fmt::Debug,
+    S: Storage<T, M, M0>,
 {
     /// Inserts a feature into the HNSW.
     pub fn insert(&mut self, q: T) -> usize {
@@ -143,7 +149,7 @@ where
             return 0;
         }
 
-        node.id = self.storage.meta_data.num_nodes.unwrap() as usize;
+        node.id = self.storage.meta_data().num_nodes.unwrap() as usize;
         let mut searcher = self.initialize_searcher(&node.feature);
 
         // Find the entry point on the level it was created by searching normally until its level.
@@ -294,7 +300,7 @@ where
         // Add the entry point.
         let entry_distance = self.metric.distance(q, &ep.feature);
         let candidate = Neighbor {
-            index: self.storage.meta_data.entry_point.unwrap() as usize,
+            index: self.storage.meta_data().entry_point.unwrap() as usize,
             distance: entry_distance,
         };
         searcher.candidates.push(candidate);
@@ -357,18 +363,6 @@ where
         for i in 0..self.storage.num_node() {
             println!("{:?}", self.storage.get(i as i32));
         }
-        println!("{:?}", self.storage.meta_data);
-    }
-}
-
-impl<Met, T, R, const M: usize, const M0: usize> Default for Hnsw<Met, T, R, M, M0>
-where
-    R: RngCore + SeedableRng,
-    Met: Metric<T> + Default,
-    <Met as Metric<T>>::Unit: Into<f32> + From<f32> + core::fmt::Debug,
-    T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone + core::fmt::Debug,
-{
-    fn default() -> Self {
-        Self::new(Met::default())
+        println!("{:?}", self.storage.meta_data());
     }
 }

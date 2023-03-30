@@ -13,11 +13,18 @@ impl<const N: usize> NeighborNodes<N> {
             neighbors: [(0, u32::MAX); N],
         }
     }
+
     pub fn neighbors(&self) -> impl Iterator<Item = (usize, u32)> + '_ {
         self.neighbors
             .iter()
             .cloned()
             .take_while(|&n| n.1 != u32::MAX)
+    }
+}
+
+impl<const N: usize> Default for NeighborNodes<N> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
