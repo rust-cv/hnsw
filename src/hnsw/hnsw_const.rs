@@ -226,12 +226,12 @@ where
     ///
     /// The `item` must be retrieved from [`HNSW::search_layer`].
     pub fn feature(&self, item: usize) -> &T {
-        &self.features[item as usize]
+        &self.features[item]
     }
 
     /// Extract the feature from a particular level for a given item returned by [`HNSW::search_layer`].
     pub fn layer_feature(&self, level: usize, item: usize) -> &T {
-        &self.features[self.layer_item_id(level, item) as usize]
+        &self.features[self.layer_item_id(level, item)]
     }
 
     /// Retrieve the item ID for a given layer item returned by [`HNSW::search_layer`].
@@ -239,7 +239,7 @@ where
         if level == 0 {
             item
         } else {
-            self.layers[level][item as usize].zero_node
+            self.layers[level][item].zero_node
         }
     }
 
@@ -319,8 +319,8 @@ where
         cap: usize,
     ) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
-            for neighbor in layer[index as usize].neighbors() {
-                let neighbor_node = &layer[neighbor as usize];
+            for neighbor in layer[index].neighbors() {
+                let neighbor_node = &layer[neighbor];
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
                 // across all layers since zero nodes are consistent among all layers.
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
@@ -328,7 +328,7 @@ where
                     // Compute the distance of this neighbor.
                     let distance = self
                         .metric
-                        .distance(q, &self.features[neighbor_node.zero_node as usize]);
+                        .distance(q, &self.features[neighbor_node.zero_node]);
                     // Attempt to insert into nearest queue.
                     let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
                     if pos != cap {
@@ -339,7 +339,7 @@ where
                         }
                         // Either way, add the new item.
                         let candidate = Neighbor {
-                            index: neighbor as usize,
+                            index: neighbor,
                             distance,
                         };
                         searcher.nearest.insert(pos, candidate);
@@ -353,13 +353,13 @@ where
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
     fn search_zero_layer(&self, q: &T, searcher: &mut Searcher<Met::Unit>, cap: usize) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
-            for neighbor in self.zero[index as usize].neighbors() {
+            for neighbor in self.zero[index].neighbors() {
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
                 // across all layers since zero nodes are consistent among all layers.
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
                 if searcher.seen.insert(neighbor) {
                     // Compute the distance of this neighbor.
-                    let distance = self.metric.distance(q, &self.features[neighbor as usize]);
+                    let distance = self.metric.distance(q, &self.features[neighbor]);
                     // Attempt to insert into nearest queue.
                     let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
                     if pos != cap {
@@ -370,7 +370,7 @@ where
                         }
                         // Either way, add the new item.
                         let candidate = Neighbor {
-                            index: neighbor as usize,
+                            index: neighbor,
                             distance,
                         };
                         searcher.nearest.insert(pos, candidate);
@@ -392,7 +392,7 @@ where
         let &Neighbor { index, distance } = searcher.nearest.first().unwrap();
         searcher.nearest.clear();
         // Update the node to the next layer.
-        let new_index = layer[index].next_node as usize;
+        let new_index = layer[index].next_node;
         let candidate = Neighbor {
             index: new_index,
             distance,
@@ -427,7 +427,7 @@ where
     /// Gets the entry point's feature.
     fn entry_feature(&self) -> &T {
         if let Some(last_layer) = self.layers.last() {
-            &self.features[last_layer[0].zero_node as usize]
+            &self.features[last_layer[0].zero_node]
         } else {
             &self.features[0]
         }
@@ -446,11 +446,11 @@ where
             let new_index = self.zero.len();
             let mut neighbors: [usize; M0] = [!0; M0];
             for (d, s) in neighbors.iter_mut().zip(nearest.iter()) {
-                *d = s.index as usize;
+                *d = s.index;
             }
             let node = NeighborNodes { neighbors };
             for neighbor in node.neighbors() {
-                self.add_neighbor(q, new_index as usize, neighbor, layer);
+                self.add_neighbor(q, new_index, neighbor, layer);
             }
             self.zero.push(node);
         } else {
@@ -498,9 +498,9 @@ where
             // In this case we did find the first spot where the target was empty within the slice.
             // Now we add the neighbor to this slot.
             if layer == 0 {
-                self.zero[target_ix as usize].neighbors[empty_point] = node_ix;
+                self.zero[target_ix].neighbors[empty_point] = node_ix;
             } else {
-                self.layers[layer - 1][target_ix as usize]
+                self.layers[layer - 1][target_ix]
                     .neighbors
                     .neighbors[empty_point] = node_ix;
             }
@@ -534,9 +534,9 @@ where
             // This is also different for the zero layer.
             if self.metric.distance(q, target_feature) < worst_distance {
                 if layer == 0 {
-                    self.zero[target_ix as usize].neighbors[worst_ix] = node_ix;
+                    self.zero[target_ix].neighbors[worst_ix] = node_ix;
                 } else {
-                    self.layers[layer - 1][target_ix as usize]
+                    self.layers[layer - 1][target_ix]
                         .neighbors
                         .neighbors[worst_ix] = node_ix;
                 }

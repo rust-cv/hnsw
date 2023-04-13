@@ -85,7 +85,7 @@ fn linear_1_nn_inliers() {
         .cloned()
         .map(|mut feature| {
             for bit in 0..128 {
-                let choice: bool = prng_bit_chooser.sample(&bernoulli);
+                let choice: bool = prng_bit_chooser.sample(bernoulli);
                 feature[bit / 8] ^= (choice as u8) << (bit % 8);
             }
             feature
