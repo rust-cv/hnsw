@@ -202,13 +202,13 @@ fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
                 };
                 opt.k
             ];
-            let stats = easybench::bench_env(dest, |mut dest| {
+            let stats = easybench::bench_env(dest, |dest| {
                 let mut refmut = state.borrow_mut();
                 let (searcher, query) = &mut *refmut;
                 let (ix, query_feature) = query.next().unwrap();
                 let correct_worst_distance = correct_worst_distances[ix];
                 // Go through all the features.
-                for &mut neighbor in hnsw.nearest(&query_feature, ef, searcher, &mut dest) {
+                for &mut neighbor in hnsw.nearest(&query_feature, ef, searcher, dest) {
                     // Any feature that is less than or equal to the worst real nearest neighbor distance is correct.
                     if Euclidean.distance(&search_space[neighbor.index], &query_feature)
                         <= correct_worst_distance

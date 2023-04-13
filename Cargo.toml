@@ -2,7 +2,7 @@
 name = "hnsw"
 version = "0.11.1-alpha.0"
 authors = ["Geordon Worley <vadixidav@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "Fast approximate nearest neighbors"
 keywords = ["hamming", "distance", "nearest", "neighbor", "search"]
 categories = ["algorithms", "data-structures", "science"]
