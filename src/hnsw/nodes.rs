@@ -7,6 +7,11 @@ use core::{
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
+pub enum Layer<T> {
+    Zero,
+    NonZero(T),
+}
+
 pub trait HasNeighbors<'a, 'b> {
     type NeighborIter: Iterator<Item = usize> + 'a;
 

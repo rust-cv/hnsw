@@ -6,7 +6,7 @@ use rand_core::{RngCore, SeedableRng};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use space::{Knn, KnnPoints, Metric, Neighbor};
-use super::nodes::HasNeighbors;
+use super::nodes::{HasNeighbors, Layer};
 
 /// This provides a HNSW implementation for any distance function.
 ///
@@ -168,7 +168,7 @@ where
         // Find the entry point on the level it was created by searching normally until its level.
         for ix in (level..self.layers.len()).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_single_layer(&q, searcher, Some(&self.layers[ix]), cap);
+            self.search_single_layer(&q, searcher, Layer::NonZero(&self.layers[ix]), cap);
             // Then lower the search only after we create the node.
             self.lower_search(&self.layers[ix], searcher);
             cap = if ix == level {
@@ -181,7 +181,7 @@ where
         // Then start from its level and connect it to its nearest neighbors.
         for ix in (0..core::cmp::min(level, self.layers.len())).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_single_layer(&q, searcher, Some(&self.layers[ix]), cap);
+            self.search_single_layer(&q, searcher, Layer::NonZero(&self.layers[ix]), cap);
             // Then use the results of that search on this layer to connect the nodes.
             self.create_node(&q, &searcher.nearest, ix + 1);
             // Then lower the search only after we create the node.
@@ -292,7 +292,7 @@ where
         let cap = 1;
 
         for (ix, layer) in self.layers.iter().enumerate().rev() {
-            self.search_single_layer(q, searcher, Some(layer), cap);
+            self.search_single_layer(q, searcher, Layer::NonZero(layer), cap);
             if ix + 1 == level {
                 let found = core::cmp::min(dest.len(), searcher.nearest.len());
                 dest.copy_from_slice(&searcher.nearest[..found]);
@@ -317,18 +317,17 @@ where
         &self,
         q: &T,
         searcher: &mut Searcher<Met::Unit>,
-        layer: Option<&[Node<M>]>,
+        layer: Layer<&[Node<M>]>,
         cap: usize,
     ) {
-        // self.zero[index as usize].get_neighbors()
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
             for neighbor in match layer {
-                Some(layer) => layer[index as usize].get_neighbors(),
-                None => self.zero[index as usize].get_neighbors(),
+                Layer::NonZero(layer) => layer[index as usize].get_neighbors(),
+                Layer::Zero => self.zero[index as usize].get_neighbors(),
             } {
                 let node_to_visit = match layer {
-                    Some(layer) => layer[neighbor as usize].zero_node,
-                    None => neighbor,
+                    Layer::NonZero(layer) => layer[neighbor as usize].zero_node,
+                    Layer::Zero => neighbor,
                 };
 
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
@@ -362,7 +361,7 @@ where
 
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
     fn search_zero_layer(&self, q: &T, searcher: &mut Searcher<Met::Unit>, cap: usize) {
-        self.search_single_layer(q, searcher, None, cap);
+        self.search_single_layer(q, searcher, Layer::Zero, cap);
     }
 
     /// Ready a search for the next level down.
