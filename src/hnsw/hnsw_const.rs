@@ -6,6 +6,7 @@ use rand_core::{RngCore, SeedableRng};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use space::{Knn, KnnPoints, Metric, Neighbor};
+use super::nodes::HasNeighbors;
 
 /// This provides a HNSW implementation for any distance function.
 ///
@@ -319,7 +320,7 @@ where
         cap: usize,
     ) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
-            for neighbor in layer[index as usize].neighbors() {
+            for neighbor in layer[index as usize].get_neighbors() {
                 let neighbor_node = &layer[neighbor as usize];
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
                 // across all layers since zero nodes are consistent among all layers.
@@ -353,7 +354,7 @@ where
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
     fn search_zero_layer(&self, q: &T, searcher: &mut Searcher<Met::Unit>, cap: usize) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
-            for neighbor in self.zero[index as usize].neighbors() {
+            for neighbor in self.zero[index as usize].get_neighbors() {
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
                 // across all layers since zero nodes are consistent among all layers.
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
@@ -449,7 +450,7 @@ where
                 *d = s.index as usize;
             }
             let node = NeighborNodes { neighbors };
-            for neighbor in node.neighbors() {
+            for neighbor in node.get_neighbors() {
                 self.add_neighbor(q, new_index as usize, neighbor, layer);
             }
             self.zero.push(node);
@@ -468,7 +469,7 @@ where
                 },
                 neighbors: NeighborNodes { neighbors },
             };
-            for neighbor in node.neighbors() {
+            for neighbor in node.get_neighbors() {
                 self.add_neighbor(q, new_index, neighbor, layer);
             }
             self.layers[layer - 1].push(node);
