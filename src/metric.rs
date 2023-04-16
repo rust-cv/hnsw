@@ -51,6 +51,23 @@ impl Metric<Vec<f32>> for SimpleEuclidean {
     }
 }
 
+pub struct CosineDistance;
+
+impl Metric<Vec<f32>> for CosineDistance {
+    type Unit = EncodableFloat;
+    fn distance(&self, lhs: &Vec<f32>, rhs: &Vec<f32>) -> EncodableFloat {
+        let value = lhs
+            .iter()
+            .zip(rhs.iter())
+            .map(|(&l, &r)| l * r)
+            .sum::<f32>();
+        let lnorm = lhs.iter().map(|x| x*x).sum::<f32>().sqrt();
+        let rnorm = rhs.iter().map(|x| x*x).sum::<f32>().sqrt();
+        let value = 1. - value/(lnorm * rnorm + f32::EPSILON);
+        EncodableFloat { value }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Neighbor<Unit, Ix = usize> {
     /// Index of the neighbor in the search space.
