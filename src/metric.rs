@@ -61,9 +61,9 @@ impl Metric<Vec<f32>> for CosineDistance {
             .zip(rhs.iter())
             .map(|(&l, &r)| l * r)
             .sum::<f32>();
-        let lnorm = lhs.iter().map(|x| x*x).sum::<f32>().sqrt();
-        let rnorm = rhs.iter().map(|x| x*x).sum::<f32>().sqrt();
-        let value = 1. - value/(lnorm * rnorm + f32::EPSILON);
+        let lnorm = lhs.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let rnorm = rhs.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let value = 1. - value / (lnorm * rnorm + f32::EPSILON);
         EncodableFloat { value }
     }
 }
