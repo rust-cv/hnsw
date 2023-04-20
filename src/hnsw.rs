@@ -118,8 +118,12 @@ where
     T: serde::Serialize + serde::de::DeserializeOwned + std::clone::Clone + core::fmt::Debug,
     S: Storage<T, M, M0>,
 {
+    pub fn insert_with_auto_id(&mut self, q: T) -> usize {
+        let id = self.storage.num_node();
+        self.insert(q, id)
+    }
     /// Inserts a feature into the HNSW.
-    pub fn insert(&mut self, q: T) -> usize {
+    pub fn insert(&mut self, q: T, id: usize) -> usize {
         // Get the level of this feature.
         let level = self.random_level();
         let mut cap = if level >= self.storage.num_layer() {
@@ -129,7 +133,7 @@ where
         };
         // instantiate new node
         let mut node = Node::<T, M, M0> {
-            id: 0,
+            id,
             neighbors: vec![],
             zero_neighbors: NeighborNodes::new(),
             feature: q,
@@ -149,7 +153,6 @@ where
             return 0;
         }
 
-        node.id = self.storage.meta_data().num_nodes.unwrap() as usize;
         let mut searcher = self.initialize_searcher(&node.feature);
 
         // Find the entry point on the level it was created by searching normally until its level.

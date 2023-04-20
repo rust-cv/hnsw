@@ -20,9 +20,10 @@ fn test_hnsw() -> Hnsw<SimpleEuclidean, Vec<f32>, Pcg64, storage::HashMap<Vec<f3
         vec![1.0, 1.0, 0.0, 0.0],
         vec![1.0, 0.0, 0.0, 1.0],
     ];
-
+    let mut id: usize = 0;
     for feature in features {
-        hnsw.insert(feature);
+        hnsw.insert(feature, id);
+        id += 1;
     }
 
     hnsw

@@ -37,9 +37,10 @@ fn random() {
             hnsw::storage::NodeDB::new("/tmp/test.db"),
             // hnsw::storage::HashMap::new(),
         );
-
+        let mut id: usize = 0;
         for feature in features.clone() {
-            hnsw.insert(feature);
+            hnsw.insert(feature, id);
+            id += 1;
         }
 
         hnsw.nearest(&query, 24, TAKE_NEIGHBORS)
