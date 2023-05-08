@@ -138,15 +138,13 @@ where
             zero_neighbors: NeighborNodes::new(),
             feature: q,
         };
+        for _i in 0..level {
+            node.neighbors.push(NeighborNodes::new());
+        }
 
         // If this is empty, none of this will work, so just add it manually.
         if self.storage.num_node() == 0 {
             // Add all the layers its in.
-            for _i in 0..level {
-                // It's always index 0 with no neighbors since its the first feature.
-                node.neighbors.push(NeighborNodes::new());
-            }
-
             let _ = self.storage.update_entry_point(node.id as i32);
             let _ = self.storage.store_new_node(node);
 
@@ -173,6 +171,8 @@ where
             // Perform an ANN search on this layer like normal.
             self.search_single_layer(ix, &node.feature, &mut searcher, cap);
             // Then use the results of that search on this layer to connect the nodes.
+
+            self.assign_neighbors::<M>(&mut node, &searcher.nearest, ix + 1);
             self.update_neighbors(&node, &searcher.nearest, ix + 1);
             // Then lower the search only after we create the node.
             self.go_down_layer(&mut searcher);
@@ -231,7 +231,10 @@ where
                 .get(index as i32)
                 .expect("unknown node id")
                 .expect("unknown node id");
-
+            if candidate_node.neighbors.get(layer_idx).is_none() {
+                println!("candidate {:?}", candidate_node);
+                self.dump();
+            }
             candidate_node.neighbors[layer_idx]
                 .neighbors()
                 .for_each(|nidx| {
@@ -331,6 +334,18 @@ where
                 let _ = self.storage.put(n);
             }
         });
+    }
+
+    fn  assign_neighbors<const MM: usize>(
+        &mut self,
+        node: &mut Node<T, M, M0>,
+        nearest: &[Neighbor<Met::Unit>],
+        layer: usize,
+    ) {
+        for i in 0..std::cmp::min(MM, nearest.len()) {
+            let neighbor = nearest[i];
+            node.neighbors[layer-1].neighbors[i] = (neighbor.index, neighbor.distance.into());
+        }
     }
 
     fn add_neighbor_internal<const MM: usize>(
