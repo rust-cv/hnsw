@@ -336,15 +336,18 @@ where
         });
     }
 
-    fn  assign_neighbors<const MM: usize>(
+    fn assign_neighbors<const MM: usize>(
         &mut self,
         node: &mut Node<T, M, M0>,
         nearest: &[Neighbor<Met::Unit>],
         layer: usize,
     ) {
-        for i in 0..std::cmp::min(MM, nearest.len()) {
-            let neighbor = nearest[i];
-            node.neighbors[layer-1].neighbors[i] = (neighbor.index, neighbor.distance.into());
+        for (i, neighbor) in nearest
+            .iter()
+            .enumerate()
+            .take(std::cmp::min(MM, nearest.len()))
+        {
+            node.neighbors[layer - 1].neighbors[i] = (neighbor.index, neighbor.distance.into());
         }
     }
 

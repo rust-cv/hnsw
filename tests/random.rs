@@ -24,11 +24,11 @@ fn random() {
 
         (
             std::iter::repeat_with(&repeater)
-            .take(PUT_SAMPLES)
-            .collect(),
+                .take(PUT_SAMPLES)
+                .collect(),
             std::iter::repeat_with(repeater)
-            .take(QUERY_SAMPLES)
-            .collect(),
+                .take(QUERY_SAMPLES)
+                .collect(),
         )
     };
 
@@ -66,7 +66,6 @@ fn random() {
     println!("{:?}", start.elapsed());
 }
 
-
 #[test]
 fn random2() {
     const PUT_SAMPLES: usize = 5_000;
@@ -86,11 +85,11 @@ fn random2() {
 
         (
             std::iter::repeat_with(&repeater)
-            .take(PUT_SAMPLES)
-            .collect(),
+                .take(PUT_SAMPLES)
+                .collect(),
             std::iter::repeat_with(repeater)
-            .take(QUERY_SAMPLES)
-            .collect(),
+                .take(QUERY_SAMPLES)
+                .collect(),
         )
     };
 
