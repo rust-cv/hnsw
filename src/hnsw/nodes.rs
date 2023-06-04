@@ -1,6 +1,6 @@
 use core::{
+    iter::{Cloned, TakeWhile},
     slice::Iter,
-    iter::{TakeWhile, Cloned},
 };
 
 #[cfg(feature = "serde")]

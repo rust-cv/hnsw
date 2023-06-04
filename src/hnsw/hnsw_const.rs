@@ -1,3 +1,4 @@
+use super::nodes::{HasNeighbors, Layer};
 use crate::hnsw::nodes::{NeighborNodes, Node};
 use crate::*;
 use alloc::{vec, vec::Vec};
@@ -6,7 +7,6 @@ use rand_core::{RngCore, SeedableRng};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use space::{Knn, KnnPoints, Metric, Neighbor};
-use super::nodes::{HasNeighbors, Layer};
 
 /// This provides a HNSW implementation for any distance function.
 ///
