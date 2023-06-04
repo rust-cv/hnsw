@@ -1,6 +1,22 @@
+use core::{
+    slice::Iter,
+    iter::{TakeWhile, Cloned},
+};
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
+
+pub enum Layer<T> {
+    Zero,
+    NonZero(T),
+}
+
+pub trait HasNeighbors<'a, 'b> {
+    type NeighborIter: Iterator<Item = usize> + 'a;
+
+    fn get_neighbors(&'b self) -> Self::NeighborIter;
+}
 
 /// A node in the zero layer
 #[derive(Clone, Debug)]
@@ -9,8 +25,10 @@ pub struct NeighborNodes<const N: usize> {
     pub neighbors: [usize; N],
 }
 
-impl<const N: usize> NeighborNodes<N> {
-    pub fn neighbors(&self) -> impl Iterator<Item = usize> + '_ {
+impl<'a, 'b: 'a, const N: usize> HasNeighbors<'a, 'b> for NeighborNodes<N> {
+    type NeighborIter = TakeWhile<Cloned<Iter<'a, usize>>, fn(&usize) -> bool>;
+
+    fn get_neighbors(&'b self) -> Self::NeighborIter {
         self.neighbors.iter().cloned().take_while(|&n| n != !0)
     }
 }
@@ -27,9 +45,11 @@ pub struct Node<const N: usize> {
     pub neighbors: NeighborNodes<N>,
 }
 
-impl<const N: usize> Node<N> {
-    pub fn neighbors(&self) -> impl Iterator<Item = usize> + '_ {
-        self.neighbors.neighbors()
+impl<'a, 'b: 'a, const N: usize> HasNeighbors<'a, 'b> for Node<N> {
+    type NeighborIter = TakeWhile<Cloned<Iter<'a, usize>>, fn(&usize) -> bool>;
+
+    fn get_neighbors(&'b self) -> Self::NeighborIter {
+        self.neighbors.get_neighbors()
     }
 }
 
