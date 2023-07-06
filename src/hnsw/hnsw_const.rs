@@ -320,7 +320,7 @@ where
         self.search_zero_layer(q, searcher, cap);
 
         let found = core::cmp::min(dest.len(), searcher.nearest.len());
-        dest.copy_from_slice(&searcher.nearest[..found]);
+        dest[..found].copy_from_slice(&searcher.nearest[..found]);
         &mut dest[..found]
     }
 
