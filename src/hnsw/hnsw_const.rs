@@ -3,6 +3,7 @@ use crate::*;
 use alloc::{vec, vec::Vec};
 use num_traits::Zero;
 use rand_core::{RngCore, SeedableRng};
+use rayon::iter::ParallelIterator;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use space::{Knn, KnnPoints, Metric, Neighbor};
@@ -80,10 +81,17 @@ where
     }
 }
 
-impl<Met, T, R, const M: usize, const M0: usize> Knn for Hnsw<Met, T, R, M, M0>
+impl<
+        Met: Sync,
+        T: Send + Sync,
+        R,
+        U: Send + Sync + Copy + Ord + Zero,
+        const M: usize,
+        const M0: usize,
+    > Knn for Hnsw<Met, T, R, M, M0>
 where
-    R: RngCore,
-    Met: Metric<T>,
+    R: RngCore + Sync,
+    Met: Metric<T, Unit = U>,
 {
     type Ix = usize;
     type Metric = Met;
@@ -107,20 +115,34 @@ where
     }
 }
 
-impl<Met, T, R, const M: usize, const M0: usize> KnnPoints for Hnsw<Met, T, R, M, M0>
+impl<
+        Met: Sync,
+        T: Send + Sync,
+        R,
+        U: Send + Sync + Copy + Ord + Zero,
+        const M: usize,
+        const M0: usize,
+    > KnnPoints for Hnsw<Met, T, R, M, M0>
 where
-    R: RngCore,
-    Met: Metric<T>,
+    R: RngCore + Sync,
+    Met: Metric<T, Unit = U>,
 {
     fn get_point(&self, index: usize) -> &'_ T {
         &self.features[index]
     }
 }
 
-impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0>
+impl<
+        Met: Sync,
+        T: Send + Sync,
+        R,
+        U: Send + Sync + Ord + Copy + Zero,
+        const M: usize,
+        const M0: usize,
+    > Hnsw<Met, T, R, M, M0>
 where
-    R: RngCore,
-    Met: Metric<T>,
+    R: RngCore + Sync,
+    Met: Metric<T, Unit = U>,
 {
     /// Creates a HNSW with the passed `prng`.
     pub fn new_prng(metric: Met, prng: R) -> Self {
@@ -368,13 +390,26 @@ where
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
     fn search_zero_layer(&self, q: &T, searcher: &mut Searcher<Met::Unit>, cap: usize) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
+            let mut distances: Vec<(usize, U)> = self.zero[index as usize]
+                .par_neighbors()
+                .map(|neighbor| {
+                    (
+                        neighbor,
+                        self.metric.distance(q, &self.features[neighbor as usize]),
+                    )
+                })
+                .collect();
+            distances.sort();
             for neighbor in self.zero[index as usize].neighbors() {
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
                 // across all layers since zero nodes are consistent among all layers.
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
                 if searcher.seen.insert(neighbor) {
                     // Compute the distance of this neighbor.
-                    let distance = self.metric.distance(q, &self.features[neighbor as usize]);
+                    let distance_idx = distances
+                        .binary_search_by(|(i, _)| i.cmp(&neighbor))
+                        .unwrap();
+                    let distance = distances[distance_idx].1;
                     // Attempt to insert into nearest queue.
                     let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
                     if pos != cap {
