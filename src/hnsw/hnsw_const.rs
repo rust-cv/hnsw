@@ -356,8 +356,8 @@ where
         cap: usize,
     ) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
-            for neighbor in layer[index as usize].neighbors() {
-                let neighbor_node = &layer[neighbor as usize];
+            for neighbor in layer[index].neighbors() {
+                let neighbor_node = &layer[neighbor];
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
                 // across all layers since zero nodes are consistent among all layers.
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
@@ -365,7 +365,7 @@ where
                     // Compute the distance of this neighbor.
                     let distance = self
                         .metric
-                        .distance(q, &self.features[neighbor_node.zero_node as usize]);
+                        .distance(q, &self.features[neighbor_node.zero_node]);
                     // Attempt to insert into nearest queue.
                     let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
                     if pos != cap {
@@ -376,7 +376,7 @@ where
                         }
                         // Either way, add the new item.
                         let candidate = Neighbor {
-                            index: neighbor as usize,
+                            index: neighbor,
                             distance,
                         };
                         searcher.nearest.insert(pos, candidate);
@@ -390,43 +390,32 @@ where
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
     fn search_zero_layer(&self, q: &T, searcher: &mut Searcher<Met::Unit>, cap: usize) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
-            let mut distances: Vec<(usize, U)> = self.zero[index as usize]
+            // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
+            // across all layers since zero nodes are consistent among all layers.
+            // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory
+            let distances: Vec<(usize, U)> = self.zero[index]
                 .par_neighbors()
-                .map(|neighbor| {
-                    (
-                        neighbor,
-                        self.metric.distance(q, &self.features[neighbor as usize]),
-                    )
-                })
+                .filter(|neighbor| searcher.seen.get(neighbor).is_none())
+                .map(|neighbor| (neighbor, self.metric.distance(q, &self.features[neighbor])))
                 .collect();
-            distances.sort();
-            for neighbor in self.zero[index as usize].neighbors() {
-                // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
-                // across all layers since zero nodes are consistent among all layers.
-                // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
-                if searcher.seen.insert(neighbor) {
-                    // Compute the distance of this neighbor.
-                    let distance_idx = distances
-                        .binary_search_by(|(i, _)| i.cmp(&neighbor))
-                        .unwrap();
-                    let distance = distances[distance_idx].1;
-                    // Attempt to insert into nearest queue.
-                    let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
-                    if pos != cap {
-                        // It was successful. Now we need to know if its full.
-                        if searcher.nearest.len() == cap {
-                            // In this case remove the worst item.
-                            searcher.nearest.pop();
-                        }
-                        // Either way, add the new item.
-                        let candidate = Neighbor {
-                            index: neighbor as usize,
-                            distance,
-                        };
-                        searcher.nearest.insert(pos, candidate);
-                        searcher.candidates.push(candidate);
+            for (neighbor, distance) in distances {
+                // Attempt to insert into nearest queue.
+                let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
+                if pos != cap {
+                    // It was successful. Now we need to know if its full.
+                    if searcher.nearest.len() == cap {
+                        // In this case remove the worst item.
+                        searcher.nearest.pop();
                     }
+                    // Either way, add the new item.
+                    let candidate = Neighbor {
+                        index: neighbor,
+                        distance,
+                    };
+                    searcher.nearest.insert(pos, candidate);
+                    searcher.candidates.push(candidate);
                 }
+                searcher.seen.insert(neighbor);
             }
         }
     }
