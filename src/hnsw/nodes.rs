@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -12,6 +13,13 @@ pub struct NeighborNodes<const N: usize> {
 impl<const N: usize> NeighborNodes<N> {
     pub fn neighbors(&self) -> impl Iterator<Item = usize> + '_ {
         self.neighbors.iter().cloned().take_while(|&n| n != !0)
+    }
+
+    pub fn par_neighbors(&self) -> impl ParallelIterator<Item = usize> + '_ {
+        self.neighbors
+            .par_iter()
+            .cloned()
+            .take_any_while(|&n| n != !0)
     }
 }
 
