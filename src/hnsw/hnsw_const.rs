@@ -1,3 +1,4 @@
+use super::nodes::{HasNeighbors, Layer};
 use crate::hnsw::nodes::{NeighborNodes, Node};
 use crate::*;
 use alloc::{vec, vec::Vec};
@@ -182,7 +183,7 @@ where
         // Find the entry point on the level it was created by searching normally until its level.
         for ix in (level..self.layers.len()).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_single_layer(&q, searcher, &self.layers[ix], cap);
+            self.search_single_layer(&q, searcher, Layer::NonZero(&self.layers[ix]), cap);
             // Then lower the search only after we create the node.
             self.lower_search(&self.layers[ix], searcher);
             cap = if ix == level {
@@ -195,7 +196,7 @@ where
         // Then start from its level and connect it to its nearest neighbors.
         for ix in (0..core::cmp::min(level, self.layers.len())).rev() {
             // Perform an ANN search on this layer like normal.
-            self.search_single_layer(&q, searcher, &self.layers[ix], cap);
+            self.search_single_layer(&q, searcher, Layer::NonZero(&self.layers[ix]), cap);
             // Then use the results of that search on this layer to connect the nodes.
             self.create_node(&q, &searcher.nearest, ix + 1);
             // Then lower the search only after we create the node.
@@ -306,7 +307,7 @@ where
         let cap = 1;
 
         for (ix, layer) in self.layers.iter().enumerate().rev() {
-            self.search_single_layer(q, searcher, layer, cap);
+            self.search_single_layer(q, searcher, Layer::NonZero(layer), cap);
             if ix + 1 == level {
                 let found = core::cmp::min(dest.len(), searcher.nearest.len());
                 dest.copy_from_slice(&searcher.nearest[..found]);
@@ -317,6 +318,7 @@ where
 
         let cap = ef;
 
+        // search the zero layer
         self.search_zero_layer(q, searcher, cap);
 
         let found = core::cmp::min(dest.len(), searcher.nearest.len());
@@ -330,20 +332,27 @@ where
         &self,
         q: &T,
         searcher: &mut Searcher<Met::Unit>,
-        layer: &[Node<M>],
+        layer: Layer<&[Node<M>]>,
         cap: usize,
     ) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
-            for neighbor in layer[index as usize].neighbors() {
-                let neighbor_node = &layer[neighbor as usize];
+            for neighbor in match layer {
+                Layer::NonZero(layer) => layer[index as usize].get_neighbors(),
+                Layer::Zero => self.zero[index as usize].get_neighbors(),
+            } {
+                let node_to_visit = match layer {
+                    Layer::NonZero(layer) => layer[neighbor as usize].zero_node,
+                    Layer::Zero => neighbor,
+                };
+
                 // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
                 // across all layers since zero nodes are consistent among all layers.
                 // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
-                if searcher.seen.insert(neighbor_node.zero_node) {
+                if searcher.seen.insert(node_to_visit) {
                     // Compute the distance of this neighbor.
                     let distance = self
                         .metric
-                        .distance(q, &self.features[neighbor_node.zero_node as usize]);
+                        .distance(q, &self.features[node_to_visit as usize]);
                     // Attempt to insert into nearest queue.
                     let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
                     if pos != cap {
@@ -367,33 +376,7 @@ where
 
     /// Greedily finds the approximate nearest neighbors to `q` in the zero layer.
     fn search_zero_layer(&self, q: &T, searcher: &mut Searcher<Met::Unit>, cap: usize) {
-        while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
-            for neighbor in self.zero[index as usize].neighbors() {
-                // Don't visit previously visited things. We use the zero node to allow reusing the seen filter
-                // across all layers since zero nodes are consistent among all layers.
-                // TODO: Use Cuckoo Filter or Bloom Filter to speed this up/take less memory.
-                if searcher.seen.insert(neighbor) {
-                    // Compute the distance of this neighbor.
-                    let distance = self.metric.distance(q, &self.features[neighbor as usize]);
-                    // Attempt to insert into nearest queue.
-                    let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
-                    if pos != cap {
-                        // It was successful. Now we need to know if its full.
-                        if searcher.nearest.len() == cap {
-                            // In this case remove the worst item.
-                            searcher.nearest.pop();
-                        }
-                        // Either way, add the new item.
-                        let candidate = Neighbor {
-                            index: neighbor as usize,
-                            distance,
-                        };
-                        searcher.nearest.insert(pos, candidate);
-                        searcher.candidates.push(candidate);
-                    }
-                }
-            }
-        }
+        self.search_single_layer(q, searcher, Layer::Zero, cap);
     }
 
     /// Ready a search for the next level down.
@@ -464,7 +447,7 @@ where
                 *d = s.index as usize;
             }
             let node = NeighborNodes { neighbors };
-            for neighbor in node.neighbors() {
+            for neighbor in node.get_neighbors() {
                 self.add_neighbor(q, new_index as usize, neighbor, layer);
             }
             self.zero.push(node);
@@ -483,7 +466,7 @@ where
                 },
                 neighbors: NeighborNodes { neighbors },
             };
-            for neighbor in node.neighbors() {
+            for neighbor in node.get_neighbors() {
                 self.add_neighbor(q, new_index, neighbor, layer);
             }
             self.layers[layer - 1].push(node);
