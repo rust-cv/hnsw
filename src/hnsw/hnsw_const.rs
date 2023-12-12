@@ -64,21 +64,6 @@ where
             params,
         }
     }
-
-    pub fn transform_features<T2, F>(self, f: F) -> Hnsw<Met, T2, R, M, M0>
-    where
-        F: Fn(T) -> T2,
-    {
-        let features = self.features.into_iter().map(f).collect();
-        Hnsw {
-            metric: self.metric,
-            zero: self.zero,
-            features,
-            layers: self.layers,
-            prng: self.prng,
-            params: self.params,
-        }
-    }
 }
 
 impl<Met, T, R, const M: usize, const M0: usize> Knn for Hnsw<Met, T, R, M, M0>
