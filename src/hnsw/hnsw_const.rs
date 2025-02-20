@@ -64,6 +64,17 @@ where
             params,
         }
     }
+
+    pub fn new_with_capacity(metric: Met, params: Params, capacity: usize) -> Self {
+        Self {
+            metric,
+            zero: Vec::with_capacity(capacity),
+            features: Vec::with_capacity(capacity),
+            layers: vec![],
+            prng: R::from_seed(R::Seed::default()),
+            params,
+        }
+    }
 }
 
 impl<Met, T, R, const M: usize, const M0: usize> Knn for Hnsw<Met, T, R, M, M0>
