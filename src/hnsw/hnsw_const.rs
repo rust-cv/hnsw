@@ -64,6 +64,17 @@ where
             params,
         }
     }
+
+    pub fn new_with_capacity(metric: Met, params: Params, capacity: usize) -> Self {
+        Self {
+            metric,
+            zero: Vec::with_capacity(capacity),
+            features: Vec::with_capacity(capacity),
+            layers: vec![],
+            prng: R::from_seed(R::Seed::default()),
+            params,
+        }
+    }
 }
 
 impl<Met, T, R, const M: usize, const M0: usize> Knn for Hnsw<Met, T, R, M, M0>
@@ -374,12 +385,14 @@ where
         // See Algorithm 5 line 5 of the paper. The paper makes no further comment on why `1` was chosen.
         let &Neighbor { index, distance } = searcher.nearest.first().unwrap();
         searcher.nearest.clear();
+        searcher.seen.clear();
         // Update the node to the next layer.
         let new_index = layer[index].next_node as usize;
         let candidate = Neighbor {
             index: new_index,
             distance,
         };
+        searcher.seen.insert(layer[index].zero_node);
         // Insert the index of the nearest neighbor into the nearest pool for the next layer.
         searcher.nearest.push(candidate);
         // Insert the index into the candidate pool as well.
