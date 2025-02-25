@@ -1,13 +1,16 @@
-#![no_std]
 extern crate alloc;
 
 mod hnsw;
+
+use std::cmp::Ordering;
 
 pub use self::hnsw::*;
 
 use ahash::RandomState;
 use alloc::{vec, vec::Vec};
 use hashbrown::HashSet;
+use hnsw::min_max_heap::MinMaxHeap;
+use num_traits::Unsigned;
 use space::Neighbor;
 
 #[cfg(feature = "serde")]
@@ -48,15 +51,24 @@ impl Default for Params {
 
 /// Contains all the state used when searching the HNSW
 #[derive(Clone, Debug)]
-pub struct Searcher<Metric> {
+pub struct Searcher<Metric: Ord + Unsigned + Copy> {
+    /// The candidates that have been found so far.
     candidates: Vec<Neighbor<Metric>>,
-    nearest: Vec<Neighbor<Metric>>,
+    nearest: MinMaxHeap<NbrNode<Metric>>,
     seen: HashSet<usize, RandomState>,
 }
 
-impl<Metric> Searcher<Metric> {
+impl<Metric: Ord + Unsigned + Copy> Searcher<Metric> {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            candidates: Vec::with_capacity(capacity),
+            nearest: MinMaxHeap::with_capacity(capacity),
+            seen: HashSet::with_capacity_and_hasher(capacity, RandomState::with_seeds(0, 0, 0, 0)),
+        }
     }
 
     fn clear(&mut self) {
@@ -64,13 +76,67 @@ impl<Metric> Searcher<Metric> {
         self.nearest.clear();
         self.seen.clear();
     }
+
+    pub fn get_top_k_nearest(&mut self, k: usize) -> Vec<Neighbor<Metric>> {
+        self.nearest
+            .pop_min_k(k)
+            .into_iter()
+            .map(|v| v.nbr)
+            .collect()
+    }
+
+    pub fn check_push(&mut self, distance: Metric, max_cap: usize) -> bool {
+        if self.nearest.len() < max_cap || self.nearest.peek_max().unwrap().nbr.distance > distance
+        {
+            return true;
+        }
+        false
+    }
+
+    pub fn peek_min(&self) -> Option<&Neighbor<Metric>> {
+        self.nearest.peek_min().map(|v| &v.nbr)
+    }
+
+    pub fn push(&mut self, nbr: Neighbor<Metric>) {
+        self.candidates.push(nbr);
+        self.nearest.push(NbrNode { nbr });
+    }
+
+    pub fn iter_nearest_index(&self) -> impl Iterator<Item = usize> + '_ {
+        self.nearest.iter().map(|v| v.nbr.index)
+    }
 }
 
-impl<Metric> Default for Searcher<Metric> {
+#[derive(Clone, Debug)]
+struct NbrNode<Metric: Ord> {
+    nbr: Neighbor<Metric>,
+}
+
+impl<Metric: Ord> Ord for NbrNode<Metric> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.nbr.distance.cmp(&other.nbr.distance)
+    }
+}
+
+impl<Metric: Ord> PartialOrd for NbrNode<Metric> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<Metric: Ord> PartialEq for NbrNode<Metric> {
+    fn eq(&self, other: &Self) -> bool {
+        self.nbr.distance == other.nbr.distance
+    }
+}
+
+impl<Metric: Ord> Eq for NbrNode<Metric> {}
+
+impl<Metric: Ord + Unsigned + Copy> Default for Searcher<Metric> {
     fn default() -> Self {
         Self {
             candidates: vec![],
-            nearest: vec![],
+            nearest: MinMaxHeap::new(),
             seen: HashSet::with_hasher(RandomState::with_seeds(0, 0, 0, 0)),
         }
     }

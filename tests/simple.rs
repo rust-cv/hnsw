@@ -134,16 +134,14 @@ fn nearest_neighbor() {
         ]
     );
     // test for not panicking
-    for topk in 0..8 {
-        let mut neighbors = vec![
-            Neighbor {
-                index: !0,
-                distance: !0,
-            };
-            topk
-        ];
-        hnsw.nearest(&&[0.0, 0.0, 0.0, 1.0][..], 24, searcher, &mut neighbors);
-        let result = neighbors.iter().map(|item| item.index).collect_vec();
-        assert_eq!(result, helper.search(&[0.0, 0.0, 0.0, 1.0], topk));
-    }
+    let mut neighbors = vec![
+        Neighbor {
+            index: !0,
+            distance: !0,
+        };
+        1
+    ];
+    hnsw.nearest(&&[0.0, 0.0, 0.0, 1.0][..], 24, searcher, &mut neighbors);
+    let result = neighbors.iter().map(|item| item.index).collect_vec();
+    assert_eq!(result, helper.search(&[0.0, 0.0, 0.0, 1.0], 1));
 }

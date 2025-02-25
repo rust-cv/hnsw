@@ -194,7 +194,7 @@ where
             // Perform an ANN search on this layer like normal.
             self.search_single_layer(&q, searcher, Layer::NonZero(&self.layers[ix]), cap);
             // Then use the results of that search on this layer to connect the nodes.
-            self.create_node(&q, &searcher.nearest, ix + 1);
+            self.create_node(&q, searcher.iter_nearest_index(), ix + 1);
             // Then lower the search only after we create the node.
             self.lower_search(&self.layers[ix], searcher);
             cap = self.params.ef_construction;
@@ -202,7 +202,7 @@ where
 
         // Also search and connect the node to the zero layer.
         self.search_zero_layer(&q, searcher, cap);
-        self.create_node(&q, &searcher.nearest, 0);
+        self.create_node(&q, searcher.iter_nearest_index(), 0);
         // Add the feature to the zero layer.
         self.features.push(q);
 
@@ -306,7 +306,7 @@ where
             self.search_single_layer(q, searcher, Layer::NonZero(layer), cap);
             if ix + 1 == level {
                 let found = core::cmp::min(dest.len(), searcher.nearest.len());
-                dest.copy_from_slice(&searcher.nearest[..found]);
+                dest.copy_from_slice(&searcher.get_top_k_nearest(found));
                 return &mut dest[..found];
             }
             self.lower_search(layer, searcher);
@@ -318,7 +318,7 @@ where
         self.search_zero_layer(q, searcher, cap);
 
         let found = core::cmp::min(dest.len(), searcher.nearest.len());
-        dest.copy_from_slice(&searcher.nearest[..found]);
+        dest.copy_from_slice(&searcher.get_top_k_nearest(found));
         &mut dest[..found]
     }
 
@@ -350,20 +350,18 @@ where
                         .metric
                         .distance(q, &self.features[node_to_visit as usize]);
                     // Attempt to insert into nearest queue.
-                    let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
-                    if pos != cap {
+                    if searcher.check_push(distance, cap) {
                         // It was successful. Now we need to know if its full.
                         if searcher.nearest.len() == cap {
                             // In this case remove the worst item.
-                            searcher.nearest.pop();
+                            searcher.nearest.pop_max();
                         }
                         // Either way, add the new item.
                         let candidate = Neighbor {
                             index: neighbor as usize,
                             distance,
                         };
-                        searcher.nearest.insert(pos, candidate);
-                        searcher.candidates.push(candidate);
+                        searcher.push(candidate);
                     }
                 }
             }
@@ -380,12 +378,10 @@ where
     /// `m` is the maximum number of nearest neighbors to consider during the search.
     fn lower_search(&self, layer: &[Node<M>], searcher: &mut Searcher<Met::Unit>) {
         // Clear the candidates so we can fill them with the best nodes in the last layer.
-        searcher.candidates.clear();
         // Only preserve the best candidate. The original paper's algorithm uses `1` every time.
         // See Algorithm 5 line 5 of the paper. The paper makes no further comment on why `1` was chosen.
-        let &Neighbor { index, distance } = searcher.nearest.first().unwrap();
-        searcher.nearest.clear();
-        searcher.seen.clear();
+        let &Neighbor { index, distance } = searcher.peek_min().unwrap();
+        searcher.clear();
         // Update the node to the next layer.
         let new_index = layer[index].next_node as usize;
         let candidate = Neighbor {
@@ -394,9 +390,8 @@ where
         };
         searcher.seen.insert(layer[index].zero_node);
         // Insert the index of the nearest neighbor into the nearest pool for the next layer.
-        searcher.nearest.push(candidate);
         // Insert the index into the candidate pool as well.
-        searcher.candidates.push(candidate);
+        searcher.push(candidate);
     }
 
     /// Resets a searcher, but does not set the `cap` on the nearest neighbors.
@@ -410,8 +405,7 @@ where
             index: 0,
             distance: entry_distance,
         };
-        searcher.candidates.push(candidate);
-        searcher.nearest.push(candidate);
+        searcher.push(candidate);
         searcher.seen.insert(
             self.layers
                 .last()
@@ -437,12 +431,12 @@ where
 
     /// Creates a new node at a layer given its nearest neighbors in that layer.
     /// This contains Algorithm 3 from the paper, but also includes some additional logic.
-    fn create_node(&mut self, q: &T, nearest: &[Neighbor<Met::Unit>], layer: usize) {
+    fn create_node(&mut self, q: &T, nearest: impl IntoIterator<Item = usize>, layer: usize) {
         if layer == 0 {
             let new_index = self.zero.len();
             let mut neighbors: [usize; M0] = [!0; M0];
-            for (d, s) in neighbors.iter_mut().zip(nearest.iter()) {
-                *d = s.index as usize;
+            for (d, s) in neighbors.iter_mut().zip(nearest) {
+                *d = s;
             }
             let node = NeighborNodes { neighbors };
             for neighbor in node.get_neighbors() {
@@ -452,8 +446,8 @@ where
         } else {
             let new_index = self.layers[layer - 1].len();
             let mut neighbors: [usize; M] = [!0; M];
-            for (d, s) in neighbors.iter_mut().zip(nearest.iter()) {
-                *d = s.index;
+            for (d, s) in neighbors.iter_mut().zip(nearest) {
+                *d = s;
             }
             let node = Node {
                 zero_node: self.zero.len(),
