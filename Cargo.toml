@@ -1,8 +1,8 @@
 [package]
 name = "hnsw"
-version = "0.11.1-alpha.0"
+version = "0.12.0"
 authors = ["Geordon Worley <vadixidav@gmail.com>"]
-edition = "2018"
+edition = "2024"
 description = "Fast approximate nearest neighbors"
 keywords = ["hamming", "distance", "nearest", "neighbor", "search"]
 categories = ["algorithms", "data-structures", "science"]
@@ -19,30 +19,33 @@ name = "benches"
 harness = false
 
 [dependencies]
-space = { version = "0.17.0", default-features = false, features = ["alloc"] }
-rand_core = "0.6.3"
-hashbrown = "0.11.2"
-serde = { version = "1.0.126", default-features = false, features = ["derive"], optional = true }
-libm = "0.2.1"
-smallvec = { version = "1.6.1", features = ["const_generics"] }
-ahash = { version = "0.7.4", default-features = false }
-num-traits = { version = "0.2.14", default-features = false }
+space = "0.19.0"
+rand_core = "0.9.3"
+hashbrown = "0.15.4"
+serde = { version = "1.0.219", default-features = false, features = [
+    "derive",
+], optional = true }
+libm = "0.2.15"
+smallvec = { version = "1.15.1", features = ["const_generics"] }
+ahash = { version = "0.8.12", default-features = false }
+num-traits = { version = "0.2.19", default-features = false }
 
 [dev-dependencies]
-space = { version = "0.17.0", features = ["serde", "alloc"] }
-rand_pcg = { version = "0.3.1", features = ["serde1"] }
+rand_chacha = { version = "0.9.0", features = ["serde"] }
 hamming-heap = "0.4.1"
-rand = "0.8.4"
-criterion = "0.3.4"
-gnuplot = "0.0.37"
-structopt = "0.3.22"
-easybench = "1.1.0"
-itertools = "0.10.1"
-float-ord = "0.3.1"
-byteorder = "1.4.3"
-serde_json = "1.0.64"
-num-traits = "0.2.14"
-bitarray = { version = "0.9.1", default-features = false, features = ["space"] }
+rand = "0.9.2"
+criterion = "0.7.0"
+gnuplot = "0.0.46"
+structopt = "0.3.26"
+easybench = "1.1.1"
+itertools = "0.14.0"
+float-ord = "0.3.2"
+byteorder = "1.5.0"
+serde_json = "1.0.142"
+num-traits = "0.2.19"
+bitarray = { version = "0.10.0", default-features = false, features = [
+    "space",
+] }
 
 [profile.dev]
 opt-level = 3

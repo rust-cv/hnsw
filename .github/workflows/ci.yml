@@ -1,0 +1,69 @@
+name: ci
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  lints:
+    name: lints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install beta toolchain
+        uses: dtolnay/rust-toolchain@beta
+        with:
+          components: rustfmt, clippy
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: Run cargo clippy
+        run: cargo clippy --all-targets --tests -- -D warnings
+
+  no_std:
+    name: no_std
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install beta toolchain for ARM
+        uses: dtolnay/rust-toolchain@beta
+        with:
+          targets: armv7a-none-eabi
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build binary for armv7a-none-eabi
+        run: cargo rustc --target=armv7a-none-eabi --manifest-path=ensure_no_std/Cargo.toml
+
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install beta toolchain
+        uses: dtolnay/rust-toolchain@beta
+
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Run cargo test
+        #run: cargo test --all-features --no-fail-fast --locked --workspace -- --nocapture
+        run: cargo test --all-features --no-fail-fast --workspace -- --nocapture
