@@ -227,22 +227,22 @@ impl<Met: Metric<P>, P: ProxyView, V: ProxyView, R: RngCore, const M: usize, con
 
     /// Extract the point for a given index.
     pub fn point(&self, item: usize) -> View<'_, P> {
-        P::view(&self.points[item as usize])
+        P::view(&self.points[item])
     }
 
     /// Extract the value for a given index.
     pub fn value(&self, item: usize) -> View<'_, V> {
-        V::view(&self.values[item as usize])
+        V::view(&self.values[item])
     }
 
     /// Extract the feature from a particular level for a given item returned by [`HNSW::search_layer`].
     pub fn layer_point(&self, level: usize, item: usize) -> View<'_, P> {
-        P::view(&self.points[self.layer_item_id(level, item) as usize])
+        P::view(&self.points[self.layer_item_id(level, item)])
     }
 
     /// Extract the feature from a particular level for a given item returned by [`HNSW::search_layer`].
     pub fn layer_value(&self, level: usize, item: usize) -> View<'_, V> {
-        V::view(&self.values[self.layer_item_id(level, item) as usize])
+        V::view(&self.values[self.layer_item_id(level, item)])
     }
 
     /// Retrieve the item ID for a given layer item returned by [`HNSW::search_layer`].
@@ -250,7 +250,7 @@ impl<Met: Metric<P>, P: ProxyView, V: ProxyView, R: RngCore, const M: usize, con
         if level == 0 {
             item
         } else {
-            self.layers[level][item as usize].zero_node
+            self.layers[level][item].zero_node
         }
     }
 
@@ -346,11 +346,11 @@ impl<Met: Metric<P>, P: ProxyView, V: ProxyView, R: RngCore, const M: usize, con
     ) {
         while let Some(Neighbor { index, .. }) = searcher.candidates.pop() {
             for neighbor in match layer {
-                Layer::NonZero(layer) => layer[index as usize].get_neighbors(),
-                Layer::Zero => self.zero[index as usize].get_neighbors(),
+                Layer::NonZero(layer) => layer[index].get_neighbors(),
+                Layer::Zero => self.zero[index].get_neighbors(),
             } {
                 let node_to_visit = match layer {
-                    Layer::NonZero(layer) => layer[neighbor as usize].zero_node,
+                    Layer::NonZero(layer) => layer[neighbor].zero_node,
                     Layer::Zero => neighbor,
                 };
 
@@ -361,7 +361,7 @@ impl<Met: Metric<P>, P: ProxyView, V: ProxyView, R: RngCore, const M: usize, con
                     // Compute the distance of this neighbor.
                     let distance = self
                         .metric
-                        .distance(q, P::view(&self.points[node_to_visit as usize]));
+                        .distance(q, P::view(&self.points[node_to_visit]));
                     // Attempt to insert into nearest queue.
                     let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
                     if pos != cap {
@@ -400,7 +400,7 @@ impl<Met: Metric<P>, P: ProxyView, V: ProxyView, R: RngCore, const M: usize, con
         searcher.nearest.clear();
         searcher.seen.clear();
         // Update the node to the next layer.
-        let new_index = layer[index].next_node as usize;
+        let new_index = layer[index].next_node;
         let candidate = Neighbor {
             index: new_index,
             distance,
@@ -436,7 +436,7 @@ impl<Met: Metric<P>, P: ProxyView, V: ProxyView, R: RngCore, const M: usize, con
     /// Gets the entry point's feature.
     fn entry_point(&self) -> View<'_, P> {
         if let Some(last_layer) = self.layers.last() {
-            P::view(&self.points[last_layer[0].zero_node as usize])
+            P::view(&self.points[last_layer[0].zero_node])
         } else {
             P::view(&self.points[0])
         }
@@ -444,7 +444,7 @@ impl<Met: Metric<P>, P: ProxyView, V: ProxyView, R: RngCore, const M: usize, con
 
     /// Generates a correctly distributed random level as per Algorithm 1 line 4 of the paper.
     fn random_level(&mut self) -> usize {
-        let uniform: f64 = self.prng.next_u64() as f64 / core::u64::MAX as f64;
+        let uniform: f64 = self.prng.next_u64() as f64 / u64::MAX as f64;
         (-libm::log(uniform) * libm::log(M as f64).recip()) as usize
     }
 
@@ -455,11 +455,11 @@ impl<Met: Metric<P>, P: ProxyView, V: ProxyView, R: RngCore, const M: usize, con
             let new_index = self.zero.len();
             let mut neighbors: [usize; M0] = [!0; M0];
             for (d, s) in neighbors.iter_mut().zip(nearest.iter()) {
-                *d = s.index as usize;
+                *d = s.index;
             }
             let node = ZeroNode { neighbors };
             for neighbor in node.get_neighbors() {
-                self.add_neighbor(q, new_index as usize, neighbor, layer);
+                self.add_neighbor(q, new_index, neighbor, layer);
             }
             self.zero.push(node);
         } else {
@@ -507,11 +507,9 @@ impl<Met: Metric<P>, P: ProxyView, V: ProxyView, R: RngCore, const M: usize, con
             // In this case we did find the first spot where the target was empty within the slice.
             // Now we add the neighbor to this slot.
             if layer == 0 {
-                self.zero[target_ix as usize].neighbors[empty_point] = node_ix;
+                self.zero[target_ix].neighbors[empty_point] = node_ix;
             } else {
-                self.layers[layer - 1][target_ix as usize]
-                    .neighbors
-                    .neighbors[empty_point] = node_ix;
+                self.layers[layer - 1][target_ix].neighbors.neighbors[empty_point] = node_ix;
             }
         } else {
             // Otherwise, we need to find the worst neighbor currently.
@@ -545,11 +543,9 @@ impl<Met: Metric<P>, P: ProxyView, V: ProxyView, R: RngCore, const M: usize, con
             // This is also different for the zero layer.
             if self.metric.distance(q, target_point) < worst_distance {
                 if layer == 0 {
-                    self.zero[target_ix as usize].neighbors[worst_ix] = node_ix;
+                    self.zero[target_ix].neighbors[worst_ix] = node_ix;
                 } else {
-                    self.layers[layer - 1][target_ix as usize]
-                        .neighbors
-                        .neighbors[worst_ix] = node_ix;
+                    self.layers[layer - 1][target_ix].neighbors.neighbors[worst_ix] = node_ix;
                 }
             }
         }
@@ -557,7 +553,7 @@ impl<Met: Metric<P>, P: ProxyView, V: ProxyView, R: RngCore, const M: usize, con
 }
 
 impl<Met: Metric<P>, P: ProxyView, V: ProxyView, R: RngCore, const M: usize, const M0: usize>
-    Hnsw<Met, P, V, R, M, M0>
+    Default for Hnsw<Met, P, V, R, M, M0>
 where
     R: RngCore + SeedableRng,
     Met: Default,

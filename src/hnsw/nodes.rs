@@ -5,7 +5,6 @@ use core::{
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use smallvec::SmallVec;
 
 pub enum Layer<T> {
     Zero,
@@ -51,11 +50,4 @@ impl<'a, 'b: 'a, const N: usize> HasNeighbors<'a, 'b> for Node<N> {
     fn get_neighbors(&'b self) -> Self::NeighborIter {
         self.neighbors.get_neighbors()
     }
-}
-
-/// The inbound nodes that are pointing to this node.
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(bound = ""))]
-pub struct InboundNodes<const N: usize> {
-    pub neighbors: SmallVec<[usize; N]>,
 }
