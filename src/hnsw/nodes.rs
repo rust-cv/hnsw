@@ -20,12 +20,12 @@ pub trait HasNeighbors<'a, 'b> {
 
 /// A node in the zero layer
 #[derive(Clone, Debug)]
-pub struct NeighborNodes<const N: usize> {
+pub struct ZeroNode<const N: usize> {
     /// The neighbors of this node.
     pub neighbors: [usize; N],
 }
 
-impl<'a, 'b: 'a, const N: usize> HasNeighbors<'a, 'b> for NeighborNodes<N> {
+impl<'a, 'b: 'a, const N: usize> HasNeighbors<'a, 'b> for ZeroNode<N> {
     type NeighborIter = TakeWhile<Cloned<Iter<'a, usize>>, fn(&usize) -> bool>;
 
     fn get_neighbors(&'b self) -> Self::NeighborIter {
@@ -42,7 +42,7 @@ pub struct Node<const N: usize> {
     /// The node in the layer below this one that this node corresponds to.
     pub next_node: usize,
     /// The neighbors in the graph of this node.
-    pub neighbors: NeighborNodes<N>,
+    pub neighbors: ZeroNode<N>,
 }
 
 impl<'a, 'b: 'a, const N: usize> HasNeighbors<'a, 'b> for Node<N> {
