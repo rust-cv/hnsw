@@ -2,15 +2,91 @@ use bitarray::{BitArray, Hamming};
 use gnuplot::*;
 use hnsw::*;
 use itertools::Itertools;
+use memmap2::MmapMut;
 use num_traits::Zero;
 use rand::distributions::Standard;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
 use space::*;
 use std::cell::RefCell;
+use std::fs::OpenOptions;
 use std::io::Read;
 use std::path::PathBuf;
 use structopt::StructOpt;
+
+
+struct MmapBitArrayStore<T> {
+    mmap: MmapMut,
+    len: usize,
+    capacity: usize,
+    stride: usize,
+    _marker: std::marker::PhantomData<T>,
+}
+
+const ALIGNMENT: usize = 64;
+
+// this is very suboptimal but works for testing purposes
+fn align_up(size: usize, align: usize) -> usize {
+    (size + align - 1) & !(align - 1)
+}
+
+impl<T> MmapBitArrayStore<T> {
+    fn new(path: &str, capacity: usize, item_size: usize) -> std::io::Result<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)?;
+
+        // Align each item to 64 bytes for SIMD
+        let stride = align_up(item_size, ALIGNMENT);
+        // Add padding at start to ensure first item is aligned
+        let total_size = ALIGNMENT + capacity * stride;
+        file.set_len(total_size as u64)?;
+
+        let mmap = unsafe { MmapMut::map_mut(&file)? };
+
+        Ok(Self {
+            mmap,
+            len: 0,
+            capacity,
+            stride,
+            _marker: std::marker::PhantomData,
+        })
+    }
+
+    fn aligned_offset(&self, index: usize) -> usize {
+        // Find offset that gives 64-byte alignment
+        let base = self.mmap.as_ptr() as usize;
+        let aligned_base = align_up(base, ALIGNMENT);
+        let padding = aligned_base - base;
+        padding + index * self.stride
+    }
+}
+
+impl<const N: usize> FeatureStore<BitArray<N>> for MmapBitArrayStore<BitArray<N>> {
+    fn get(&self, index: usize) -> &BitArray<N> {
+        let offset = self.aligned_offset(index);
+        unsafe { &*(self.mmap[offset..].as_ptr() as *const BitArray<N>) }
+    }
+
+    fn push(&mut self, feature: BitArray<N>) {
+        // we dont need to be sophisticated for this dummy example
+        assert!(self.len < self.capacity, "MmapBitArrayStore capacity exceeded");
+        let offset = self.aligned_offset(self.len);
+        self.mmap[offset..offset + N].copy_from_slice(feature.bytes());
+        self.len += 1;
+    }
+
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -69,11 +145,17 @@ struct Opt {
     /// efConstruction controlls the quality of the graph at build-time.
     #[structopt(short = "c", long = "ef_construction", default_value = "400")]
     ef_construction: usize,
+    /// Use disk-based feature storage instead of in-memory Vec<T>.
+    /// This tests the FeatureStore trait with a disk backend.
+    /// Note: Does not support file input (-f).
+    #[structopt(long = "disk")]
+    disk: bool,
 }
 
-fn process<T: Clone, const M: usize, const M0: usize>(
+fn process<T: Clone, S: FeatureStore<T>, const M: usize, const M0: usize>(
     opt: &Opt,
     conv: fn(&[u8]) -> T,
+    storage: S,
 ) -> (Vec<f64>, Vec<f64>)
 where
     Hamming: Metric<T>,
@@ -164,8 +246,9 @@ where
     eprintln!("Done.");
 
     eprintln!("Generating HNSW...");
-    let mut hnsw: Hnsw<_, T, Pcg64, M, M0> =
-        Hnsw::new_params(Hamming, Params::new().ef_construction(opt.ef_construction));
+    let prng = Pcg64::new(0xcafef00dd15ea5e5, 0xa02bdbf7bb3c0a7ac28fa16a64abf96);
+    let mut hnsw: Hnsw<Hamming, T, Pcg64, M, M0, S> =
+        Hnsw::new_with_storage_and_params(Hamming, storage, Params::new().ef_construction(opt.ef_construction), prng);
     let mut searcher: Searcher<_> = Searcher::default();
     for feature in &search_space {
         hnsw.insert(feature.clone(), &mut searcher);
@@ -219,27 +302,56 @@ where
 macro_rules! process_m {
     ( $opt:expr, $m:expr, $m0:expr ) => {
         match $opt.bitstring_length {
-            128 => process::<BitArray<16>, $m, $m0>(&$opt, |b| {
+            128 => process::<BitArray<16>, _, $m, $m0>(&$opt, |b| {
                 let mut arr = [0; 16];
                 for (d, &s) in arr.iter_mut().zip(b) {
                     *d = s;
                 }
                 BitArray::new(arr)
-            }),
-            256 => process::<BitArray<32>, $m, $m0>(&$opt, |b| {
+            }, Vec::new()),
+            256 => process::<BitArray<32>, _, $m, $m0>(&$opt, |b| {
                 let mut arr = [0; 32];
                 for (d, &s) in arr.iter_mut().zip(b) {
                     *d = s;
                 }
                 BitArray::new(arr)
-            }),
-            512 => process::<BitArray<64>, $m, $m0>(&$opt, |b| {
+            }, Vec::new()),
+            512 => process::<BitArray<64>, _, $m, $m0>(&$opt, |b| {
                 let mut arr = [0; 64];
                 for (d, &s) in arr.iter_mut().zip(b) {
                     *d = s;
                 }
                 BitArray::new(arr)
-            }),
+            }, Vec::new()),
+            _ => panic!("error: incorrect bitstring_length, see --help for choices"),
+        }
+    };
+}
+
+macro_rules! process_mmap_m {
+    ( $opt:expr, $m:expr, $m0:expr ) => {
+        match $opt.bitstring_length {
+            128 => process::<BitArray<16>, _, $m, $m0>(&$opt, |b| {
+                let mut arr = [0; 16];
+                for (d, &s) in arr.iter_mut().zip(b) {
+                    *d = s;
+                }
+                BitArray::new(arr)
+            }, MmapBitArrayStore::new("/tmp/recall_discrete_mmap.bin", $opt.size, 16).unwrap()),
+            256 => process::<BitArray<32>, _, $m, $m0>(&$opt, |b| {
+                let mut arr = [0; 32];
+                for (d, &s) in arr.iter_mut().zip(b) {
+                    *d = s;
+                }
+                BitArray::new(arr)
+            }, MmapBitArrayStore::new("/tmp/recall_discrete_mmap.bin", $opt.size, 32).unwrap()),
+            512 => process::<BitArray<64>, _, $m, $m0>(&$opt, |b| {
+                let mut arr = [0; 64];
+                for (d, &s) in arr.iter_mut().zip(b) {
+                    *d = s;
+                }
+                BitArray::new(arr)
+            }, MmapBitArrayStore::new("/tmp/recall_discrete_mmap.bin", $opt.size, 64).unwrap()),
             _ => panic!("error: incorrect bitstring_length, see --help for choices"),
         }
     };
@@ -248,9 +360,29 @@ macro_rules! process_m {
 fn main() {
     let opt = Opt::from_args();
 
-    let (recalls, times) = {
-        // This can be increased indefinitely at the expense of compile time.
-        match opt.m {
+    let (recalls, times, storage_type) = if opt.disk {
+        let (r, t) = match opt.m {
+            4 => process_mmap_m!(opt, 4, 8),
+            8 => process_mmap_m!(opt, 8, 16),
+            12 => process_mmap_m!(opt, 12, 24),
+            16 => process_mmap_m!(opt, 16, 32),
+            20 => process_mmap_m!(opt, 20, 40),
+            24 => process_mmap_m!(opt, 24, 48),
+            28 => process_mmap_m!(opt, 28, 56),
+            32 => process_mmap_m!(opt, 32, 64),
+            36 => process_mmap_m!(opt, 36, 72),
+            40 => process_mmap_m!(opt, 40, 80),
+            44 => process_mmap_m!(opt, 44, 88),
+            48 => process_mmap_m!(opt, 48, 96),
+            52 => process_mmap_m!(opt, 52, 104),
+            _ => {
+                eprintln!("Only M between 4 and 52 inclusive and multiples of 4 are allowed");
+                return;
+            }
+        };
+        (r, t, "MmapBitArrayStore")
+    } else {
+        let (r, t) = match opt.m {
             4 => process_m!(opt, 4, 8),
             8 => process_m!(opt, 8, 16),
             12 => process_m!(opt, 12, 24),
@@ -268,7 +400,8 @@ fn main() {
                 eprintln!("Only M between 4 and 52 inclusive and multiples of 4 are allowed");
                 return;
             }
-        }
+        };
+        (r, t, "Vec<T>")
     };
 
     let mut fg = Figure::new();
@@ -276,8 +409,8 @@ fn main() {
     fg.axes2d()
         .set_title(
             &format!(
-                "{}-NN Recall Graph (bits = {}, size = {}, M = {})",
-                opt.k, opt.bitstring_length, opt.size, opt.m
+                "{}-NN Recall Graph (bits = {}, size = {}, M = {}, storage = {})",
+                opt.k, opt.bitstring_length, opt.size, opt.m, storage_type
             ),
             &[],
         )
@@ -291,5 +424,5 @@ fn main() {
         .set_y_grid(true)
         .set_y_minor_grid(true);
 
-    fg.show().expect("unable to show gnuplot");
+    fg.show().ok(); // Don't panic if gnuplot unavailable
 }

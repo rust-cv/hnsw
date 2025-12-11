@@ -3,6 +3,7 @@ extern crate alloc;
 
 mod hnsw;
 
+pub use self::hnsw::FeatureStore;
 pub use self::hnsw::*;
 
 use ahash::RandomState;

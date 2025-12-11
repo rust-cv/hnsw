@@ -1,12 +1,14 @@
 use byteorder::{ByteOrder, LittleEndian};
 use gnuplot::*;
 use hnsw::*;
+use memmap2::MmapMut;
 use rand::distributions::Standard;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
 use space::Metric;
 use space::Neighbor;
 use std::cell::RefCell;
+use std::fs::OpenOptions;
 use std::io::Read;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -22,6 +24,72 @@ impl Metric<&[f32]> for Euclidean {
             .sum::<f32>()
             .sqrt()
             .to_bits()
+    }
+}
+
+impl<const N: usize> Metric<[f32; N]> for Euclidean {
+    type Unit = u32;
+    fn distance(&self, a: &[f32; N], b: &[f32; N]) -> u32 {
+        a.iter()
+            .zip(b.iter())
+            .map(|(&a, &b)| (a - b).powi(2))
+            .sum::<f32>()
+            .sqrt()
+            .to_bits()
+    }
+}
+
+/// A mmap-based feature store for [f32; N] arrays.
+struct MmapFeatureStore<const N: usize> {
+    mmap: MmapMut,
+    len: usize,
+    capacity: usize,
+}
+
+impl<const N: usize> MmapFeatureStore<N> {
+    fn new(path: &str, capacity: usize) -> std::io::Result<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)?;
+
+        let total_size = capacity * std::mem::size_of::<[f32; N]>();
+        file.set_len(total_size as u64)?;
+
+        let mmap = unsafe { MmapMut::map_mut(&file)? };
+
+        Ok(Self {
+            mmap,
+            len: 0,
+            capacity,
+        })
+    }
+}
+
+impl<const N: usize> FeatureStore<[f32; N]> for MmapFeatureStore<N> {
+    fn get(&self, index: usize) -> &[f32; N] {
+        let offset = index * std::mem::size_of::<[f32; N]>();
+        unsafe { &*(self.mmap[offset..].as_ptr() as *const [f32; N]) }
+    }
+
+    fn push(&mut self, feature: [f32; N]) {
+        assert!(self.len < self.capacity, "MmapFeatureStore capacity exceeded");
+        let offset = self.len * std::mem::size_of::<[f32; N]>();
+        let bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(feature.as_ptr() as *const u8, std::mem::size_of::<[f32; N]>())
+        };
+        self.mmap[offset..offset + bytes.len()].copy_from_slice(bytes);
+        self.len += 1;
+    }
+
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len == 0
     }
 }
 
@@ -79,6 +147,9 @@ struct Opt {
     /// efConstruction controlls the quality of the graph at build-time.
     #[structopt(short = "c", long = "ef_construction", default_value = "400")]
     ef_construction: usize,
+    /// Use mmap-based feature storage instead of in-memory Vec<T>.
+    #[structopt(long = "disk")]
+    disk: bool,
 }
 
 fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
@@ -233,12 +304,183 @@ fn process<const M: usize, const M0: usize>(opt: &Opt) -> (Vec<f64>, Vec<f64>) {
     (recalls, times)
 }
 
+
+fn process_disk<S: FeatureStore<[f32; N]>, const M: usize, const M0: usize, const N: usize>(
+    opt: &Opt,
+    storage: S,
+) -> (Vec<f64>, Vec<f64>) {
+    assert!(
+        opt.k <= opt.size,
+        "You must choose a dataset size larger or equal to the test search size"
+    );
+    assert!(opt.file.is_none(), "Disk mode does not support file input");
+
+    let rng = Pcg64::from_seed([5; 32]);
+
+    eprintln!("Generating {} random bitstrings...", opt.size);
+    let search_space: Vec<[f32; N]> = rng
+        .clone()
+        .sample_iter(&Standard)
+        .take(opt.size * N)
+        .collect::<Vec<f32>>()
+        .chunks_exact(N)
+        .map(|chunk| {
+            let mut arr = [0.0f32; N];
+            arr.copy_from_slice(chunk);
+            arr
+        })
+        .collect();
+    eprintln!("Done.");
+
+    // Create another RNG to prevent potential correlation.
+    let rng = Pcg64::from_seed([6; 32]);
+
+    eprintln!(
+        "Generating {} independent random query strings...",
+        opt.num_queries
+    );
+    let query_strings: Vec<[f32; N]> = rng
+        .sample_iter(&Standard)
+        .take(opt.num_queries * N)
+        .collect::<Vec<f32>>()
+        .chunks_exact(N)
+        .map(|chunk| {
+            let mut arr = [0.0f32; N];
+            arr.copy_from_slice(chunk);
+            arr
+        })
+        .collect();
+    eprintln!("Done.");
+
+    eprintln!(
+        "Computing the correct nearest neighbor distance for all {} queries...",
+        opt.num_queries
+    );
+    let correct_worst_distances: Vec<_> = query_strings
+        .iter()
+        .map(|feature| {
+            let mut v = vec![];
+            for distance in search_space.iter().map(|n| Euclidean.distance(n, feature)) {
+                let pos = v.binary_search(&distance).unwrap_or_else(|e| e);
+                v.insert(pos, distance);
+                if v.len() > opt.k {
+                    v.resize_with(opt.k, || unreachable!());
+                }
+            }
+            // Get the worst distance
+            v.into_iter().take(opt.k).last().unwrap()
+        })
+        .collect();
+    eprintln!("Done.");
+
+    eprintln!("Generating HNSW...");
+    let prng = Pcg64::new(0xcafef00dd15ea5e5, 0xa02bdbf7bb3c0a7ac28fa16a64abf96);
+    let mut hnsw: Hnsw<Euclidean, [f32; N], Pcg64, M, M0, S> = Hnsw::new_with_storage_and_params(
+        Euclidean,
+        storage,
+        Params::new().ef_construction(opt.ef_construction),
+        prng,
+    );
+    let mut searcher: Searcher<_> = Searcher::default();
+    for feature in &search_space {
+        hnsw.insert(*feature, &mut searcher);
+    }
+    eprintln!("Done.");
+
+    eprintln!("Computing recall graph...");
+    let efs = opt.beginning_ef..=opt.ending_ef;
+    let state = RefCell::new((searcher, query_strings.iter().cloned().enumerate().cycle()));
+    let (recalls, times): (Vec<f64>, Vec<f64>) = efs
+        .map(|ef| {
+            let correct = RefCell::new(0usize);
+            let dest = vec![
+                Neighbor {
+                    index: !0,
+                    distance: !0,
+                };
+                opt.k
+            ];
+            let stats = easybench::bench_env(dest, |mut dest| {
+                let mut refmut = state.borrow_mut();
+                let (searcher, query) = &mut *refmut;
+                let (ix, query_feature) = query.next().unwrap();
+                let correct_worst_distance = correct_worst_distances[ix];
+                // Go through all the features.
+                for &mut neighbor in hnsw.nearest(&query_feature, ef, searcher, &mut dest) {
+                    // Any feature that is less than or equal to the worst real nearest neighbor distance is correct.
+                    if Euclidean.distance(&search_space[neighbor.index], &query_feature)
+                        <= correct_worst_distance
+                    {
+                        *correct.borrow_mut() += 1;
+                    }
+                }
+            });
+            (stats, correct.into_inner())
+        })
+        .fold(
+            (vec![], vec![]),
+            |(mut recalls, mut times), (stats, correct)| {
+                times.push((stats.ns_per_iter * 0.1f64.powi(9)).recip());
+                // The maximum number of correct nearest neighbors is
+                recalls.push(correct as f64 / (stats.iterations * opt.k) as f64);
+                (recalls, times)
+            },
+        );
+    eprintln!("Done.");
+
+    (recalls, times)
+}
+
+macro_rules! process_disk_m {
+    ( $opt:expr, $m:expr, $m0:expr ) => {
+        match $opt.dimensions {
+            64 => process_disk::<_, $m, $m0, 64>(
+                &$opt,
+                MmapFeatureStore::<64>::new("/tmp/recall_mmap.bin", $opt.size).unwrap(),
+            ),
+            128 => process_disk::<_, $m, $m0, 128>(
+                &$opt,
+                MmapFeatureStore::<128>::new("/tmp/recall_mmap.bin", $opt.size).unwrap(),
+            ),
+            256 => process_disk::<_, $m, $m0, 256>(
+                &$opt,
+                MmapFeatureStore::<256>::new("/tmp/recall_mmap.bin", $opt.size).unwrap(),
+            ),
+            512 => process_disk::<_, $m, $m0, 512>(
+                &$opt,
+                MmapFeatureStore::<512>::new("/tmp/recall_mmap.bin", $opt.size).unwrap(),
+            ),
+            _ => panic!("error: incorrect dimensions for disk mode, supported: 64, 128, 256, 512"),
+        }
+    };
+}
+
 fn main() {
     let opt = Opt::from_args();
 
-    let (recalls, times) = {
-        // This can be increased indefinitely at the expense of compile time.
-        match opt.m {
+    let (recalls, times, storage_type) = if opt.disk {
+        let (r, t) = match opt.m {
+            4 => process_disk_m!(opt, 4, 8),
+            8 => process_disk_m!(opt, 8, 16),
+            12 => process_disk_m!(opt, 12, 24),
+            16 => process_disk_m!(opt, 16, 32),
+            20 => process_disk_m!(opt, 20, 40),
+            24 => process_disk_m!(opt, 24, 48),
+            28 => process_disk_m!(opt, 28, 56),
+            32 => process_disk_m!(opt, 32, 64),
+            36 => process_disk_m!(opt, 36, 72),
+            40 => process_disk_m!(opt, 40, 80),
+            44 => process_disk_m!(opt, 44, 88),
+            48 => process_disk_m!(opt, 48, 96),
+            52 => process_disk_m!(opt, 52, 104),
+            _ => {
+                eprintln!("Only M between 4 and 52 inclusive and multiples of 4 are allowed");
+                return;
+            }
+        };
+        (r, t, "MmapFeatureStore")
+    } else {
+        let (r, t) = match opt.m {
             4 => process::<4, 8>(&opt),
             8 => process::<8, 16>(&opt),
             12 => process::<12, 24>(&opt),
@@ -256,7 +498,8 @@ fn main() {
                 eprintln!("Only M between 4 and 52 inclusive and multiples of 4 are allowed");
                 return;
             }
-        }
+        };
+        (r, t, "Vec<T>")
     };
 
     let mut fg = Figure::new();
@@ -264,8 +507,8 @@ fn main() {
     fg.axes2d()
         .set_title(
             &format!(
-                "{}-NN Recall Graph (dimensions = {}, size = {}, M = {})",
-                opt.k, opt.dimensions, opt.size, opt.m
+                "{}-NN Recall Graph (dimensions = {}, size = {}, M = {}, storage = {})",
+                opt.k, opt.dimensions, opt.size, opt.m, storage_type
             ),
             &[],
         )

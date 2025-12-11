@@ -43,6 +43,7 @@ byteorder = "1.4.3"
 serde_json = "1.0.64"
 num-traits = "0.2.14"
 bitarray = { version = "0.9.1", default-features = false, features = ["space"] }
+memmap2 = "0.9"
 
 [profile.dev]
 opt-level = 3

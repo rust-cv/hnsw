@@ -1,7 +1,9 @@
+use super::feature_store::FeatureStore;
 use super::nodes::{HasNeighbors, Layer};
 use crate::hnsw::nodes::{NeighborNodes, Node};
 use crate::*;
 use alloc::{vec, vec::Vec};
+use core::marker::PhantomData;
 use num_traits::Zero;
 use rand_core::{RngCore, SeedableRng};
 #[cfg(feature = "serde")]
@@ -11,16 +13,19 @@ use space::{Knn, KnnPoints, Metric, Neighbor};
 /// This provides a HNSW implementation for any distance function.
 ///
 /// The type `T` must implement [`space::Metric`] to get implementations.
+///
+/// The type `S` is the feature storage backend, defaulting to `Vec<T>`.
+/// Custom storage backends can be used by implementing [`FeatureStore`].
 #[derive(Clone)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(bound(
-        serialize = "Met: Serialize, T: Serialize, R: Serialize",
-        deserialize = "Met: Deserialize<'de>, T: Deserialize<'de>, R: Deserialize<'de>"
+        serialize = "Met: Serialize, T: Serialize, R: Serialize, S: Serialize",
+        deserialize = "Met: Deserialize<'de>, T: Deserialize<'de>, R: Deserialize<'de>, S: Deserialize<'de>"
     ))
 )]
-pub struct Hnsw<Met, T, R, const M: usize, const M0: usize> {
+pub struct Hnsw<Met, T, R, const M: usize, const M0: usize, S: FeatureStore<T> = Vec<T>> {
     /// Contains the space metric.
     metric: Met,
     /// Contains the zero layer.
@@ -28,16 +33,18 @@ pub struct Hnsw<Met, T, R, const M: usize, const M0: usize> {
     /// Contains the features of the zero layer.
     /// These are stored separately to allow SIMD speedup in the future by
     /// grouping small worlds of features together.
-    features: Vec<T>,
+    features: S,
     /// Contains each non-zero layer.
     layers: Vec<Vec<Node<M>>>,
     /// This needs to create resonably random outputs to determine the levels of insertions.
     prng: R,
     /// The parameters for the HNSW.
     params: Params,
+    /// Marker for the feature type T.
+    _marker: PhantomData<T>,
 }
 
-impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0>
+impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0, Vec<T>>
 where
     R: RngCore + SeedableRng,
 {
@@ -50,6 +57,7 @@ where
             layers: vec![],
             prng: R::from_seed(R::Seed::default()),
             params: Params::new(),
+            _marker: PhantomData,
         }
     }
 
@@ -62,6 +70,7 @@ where
             layers: vec![],
             prng: R::from_seed(R::Seed::default()),
             params,
+            _marker: PhantomData,
         }
     }
 
@@ -73,14 +82,16 @@ where
             layers: vec![],
             prng: R::from_seed(R::Seed::default()),
             params,
+            _marker: PhantomData,
         }
     }
 }
 
-impl<Met, T, R, const M: usize, const M0: usize> Knn for Hnsw<Met, T, R, M, M0>
+impl<Met, T, R, const M: usize, const M0: usize, S> Knn for Hnsw<Met, T, R, M, M0, S>
 where
     R: RngCore,
     Met: Metric<T>,
+    S: FeatureStore<T>,
 {
     type Ix = usize;
     type Metric = Met;
@@ -104,17 +115,18 @@ where
     }
 }
 
-impl<Met, T, R, const M: usize, const M0: usize> KnnPoints for Hnsw<Met, T, R, M, M0>
+impl<Met, T, R, const M: usize, const M0: usize, S> KnnPoints for Hnsw<Met, T, R, M, M0, S>
 where
     R: RngCore,
     Met: Metric<T>,
+    S: FeatureStore<T>,
 {
     fn get_point(&self, index: usize) -> &'_ T {
-        &self.features[index]
+        self.features.get(index)
     }
 }
 
-impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0>
+impl<Met, T, R, const M: usize, const M0: usize> Hnsw<Met, T, R, M, M0, Vec<T>>
 where
     R: RngCore,
     Met: Metric<T>,
@@ -128,6 +140,7 @@ where
             layers: vec![],
             prng,
             params: Default::default(),
+            _marker: PhantomData,
         }
     }
 
@@ -140,6 +153,40 @@ where
             layers: vec![],
             prng,
             params,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<Met, T, R, const M: usize, const M0: usize, S> Hnsw<Met, T, R, M, M0, S>
+where
+    R: RngCore,
+    Met: Metric<T>,
+    S: FeatureStore<T>,
+{
+    /// Creates a HNSW with a custom feature storage backend.
+    pub fn new_with_storage(metric: Met, storage: S, prng: R) -> Self {
+        Self {
+            metric,
+            zero: vec![],
+            features: storage,
+            layers: vec![],
+            prng,
+            params: Default::default(),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Creates a HNSW with a custom feature storage backend and params.
+    pub fn new_with_storage_and_params(metric: Met, storage: S, params: Params, prng: R) -> Self {
+        Self {
+            metric,
+            zero: vec![],
+            features: storage,
+            layers: vec![],
+            prng,
+            params,
+            _marker: PhantomData,
         }
     }
 
@@ -238,12 +285,12 @@ where
     ///
     /// The `item` must be retrieved from [`HNSW::search_layer`].
     pub fn feature(&self, item: usize) -> &T {
-        &self.features[item as usize]
+        self.features.get(item)
     }
 
     /// Extract the feature from a particular level for a given item returned by [`HNSW::search_layer`].
     pub fn layer_feature(&self, level: usize, item: usize) -> &T {
-        &self.features[self.layer_item_id(level, item) as usize]
+        self.features.get(self.layer_item_id(level, item))
     }
 
     /// Retrieve the item ID for a given layer item returned by [`HNSW::search_layer`].
@@ -265,7 +312,7 @@ where
 
     pub fn layer_len(&self, level: usize) -> usize {
         if level == 0 {
-            self.features.len()
+            FeatureStore::len(&self.features)
         } else if level < self.layers() {
             self.layers[level - 1].len()
         } else {
@@ -306,7 +353,7 @@ where
             self.search_single_layer(q, searcher, Layer::NonZero(layer), cap);
             if ix + 1 == level {
                 let found = core::cmp::min(dest.len(), searcher.nearest.len());
-                dest.copy_from_slice(&searcher.nearest[..found]);
+                dest[..found].copy_from_slice(&searcher.nearest[..found]);
                 return &mut dest[..found];
             }
             self.lower_search(layer, searcher);
@@ -318,7 +365,7 @@ where
         self.search_zero_layer(q, searcher, cap);
 
         let found = core::cmp::min(dest.len(), searcher.nearest.len());
-        dest.copy_from_slice(&searcher.nearest[..found]);
+        dest[..found].copy_from_slice(&searcher.nearest[..found]);
         &mut dest[..found]
     }
 
@@ -348,7 +395,7 @@ where
                     // Compute the distance of this neighbor.
                     let distance = self
                         .metric
-                        .distance(q, &self.features[node_to_visit as usize]);
+                        .distance(q, self.features.get(node_to_visit));
                     // Attempt to insert into nearest queue.
                     let pos = searcher.nearest.partition_point(|n| n.distance <= distance);
                     if pos != cap {
@@ -423,9 +470,9 @@ where
     /// Gets the entry point's feature.
     fn entry_feature(&self) -> &T {
         if let Some(last_layer) = self.layers.last() {
-            &self.features[last_layer[0].zero_node as usize]
+            self.features.get(last_layer[0].zero_node)
         } else {
-            &self.features[0]
+            self.features.get(0)
         }
     }
 
@@ -477,13 +524,13 @@ where
         // This is different for the zero layer.
         let (target_feature, target_neighbors) = if layer == 0 {
             (
-                &self.features[target_ix],
+                self.features.get(target_ix),
                 &self.zero[target_ix].neighbors[..],
             )
         } else {
             let target = &self.layers[layer - 1][target_ix];
             (
-                &self.features[target.zero_node],
+                self.features.get(target.zero_node),
                 &target.neighbors.neighbors[..],
             )
         };
@@ -511,13 +558,14 @@ where
                         None
                     } else {
                         // Compute the distance. The feature is looked up differently for the zero layer.
+                        let neighbor_zero_node = if layer == 0 {
+                            n
+                        } else {
+                            self.layers[layer - 1][n].zero_node
+                        };
                         let distance = self.metric.distance(
                             target_feature,
-                            &self.features[if layer == 0 {
-                                n
-                            } else {
-                                self.layers[layer - 1][n].zero_node
-                            }],
+                            self.features.get(neighbor_zero_node),
                         );
                         Some((ix, distance))
                     }
@@ -541,7 +589,7 @@ where
     }
 }
 
-impl<Met, T, R, const M: usize, const M0: usize> Default for Hnsw<Met, T, R, M, M0>
+impl<Met, T, R, const M: usize, const M0: usize> Default for Hnsw<Met, T, R, M, M0, Vec<T>>
 where
     R: RngCore + SeedableRng,
     Met: Default,
