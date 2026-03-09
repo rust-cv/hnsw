@@ -306,7 +306,7 @@ where
             self.search_single_layer(q, searcher, Layer::NonZero(layer), cap);
             if ix + 1 == level {
                 let found = core::cmp::min(dest.len(), searcher.nearest.len());
-                dest.copy_from_slice(&searcher.nearest[..found]);
+                dest[..found].copy_from_slice(&searcher.nearest[..found]);
                 return &mut dest[..found];
             }
             self.lower_search(layer, searcher);
@@ -318,7 +318,7 @@ where
         self.search_zero_layer(q, searcher, cap);
 
         let found = core::cmp::min(dest.len(), searcher.nearest.len());
-        dest.copy_from_slice(&searcher.nearest[..found]);
+        dest[..found].copy_from_slice(&searcher.nearest[..found]);
         &mut dest[..found]
     }
 

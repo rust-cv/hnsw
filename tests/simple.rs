@@ -147,3 +147,21 @@ fn nearest_neighbor() {
         assert_eq!(result, helper.search(&[0.0, 0.0, 0.0, 1.0], topk));
     }
 }
+
+#[test]
+fn nearest_k_greater_than_index_size() {
+    let (hnsw, mut searcher, _) = test_hnsw();
+    let searcher = &mut searcher;
+
+    // k=100 but index only has 8 elements — must not panic
+    let mut neighbors = vec![
+        Neighbor {
+            index: !0,
+            distance: !0,
+        };
+        100
+    ];
+    let found = hnsw.nearest(&&[0.0, 0.0, 0.0, 1.0][..], 100, searcher, &mut neighbors);
+    assert_eq!(found.len(), 8, "should return all 8 elements");
+    assert_eq!(found[0].index, 0, "closest should be index 0");
+}
